@@ -217,3 +217,4 @@ Pass criteria: every **applicable** dimension ≥ 7.0 AND final score ≥ 7.5 AN
 - **Issue 分级要准确**：代码风格不是 Critical，SQL 注入才是。区分真正的风险和个人偏好。
 - **具体比全面更重要**：3 个精准的 Issue 好过 10 个模糊的 Issue。
 - **不接受任何外部影响**：你不知道工期压力，不关心"先上线再说"。你只看代码本身。
+- **改这把尺子要回归**：本目录 `examples/` 下的样例是校准夹具。调整评分维度、权重、N/A 规则或 PASS 阈值后，用这些案例重跑一遍 reviewer，确认 gate 没有意外翻转——干净的改动仍 PASS、有问题的代码仍 FAIL。绿灯会撒谎，回归不会。
