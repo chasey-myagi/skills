@@ -114,7 +114,9 @@ Read the gate result from the report:
 
 ## 示例
 
-- [纯函数测试套件 → FAIL（附 8 条具体缺失场景）](examples/sample-report.md) —— 真实运行产物，展示「状态组合」N/A + 缺失场景清单
+同一个 `slugify` 函数、两份不同充分度的测试套件——这一对就是 reviewer 的校准夹具（真实运行产物）：
+- [不足版（5 测试）→ FAIL 5.32](examples/sample-fail.md) —— 附 8 条具体缺失场景，「状态组合」N/A
+- [充分版（15 测试，补齐 7 条）→ PASS 8.35](examples/sample-pass.md) —— Boundary 压线但达标，reviewer 不放水
 
 ## 失败模式与安全边界
 
