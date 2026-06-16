@@ -112,6 +112,10 @@ Read the gate result from the report:
   Tell the user: "Tests need improvement. Address the missing scenarios listed above, then run /test-review again."
   Do NOT allow implementation to proceed.
 
+## 示例
+
+- [纯函数测试套件 → FAIL（附 8 条具体缺失场景）](examples/sample-report.md) —— 真实运行产物，展示「状态组合」N/A + 缺失场景清单
+
 ## 失败模式与安全边界
 
 dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：

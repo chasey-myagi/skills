@@ -57,6 +57,10 @@ description: >
 - **Linus 说**（总结性锐评 + 实际可行的改进建议）
 - **评级**（从 "这代码应该被 revert" 到 "还行，勉强能接受"）
 
+## 示例
+
+- [过度抽象 + 两个真 bug → "Please fix and resend."](examples/sample-report.md) —— 真实运行产物
+
 ## 注意
 
 - 这是一个**娱乐性 + 实用性**兼具的 skill

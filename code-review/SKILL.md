@@ -112,6 +112,12 @@ Read the gate result from the report:
   Tell the user: "Code needs improvement. Fix the issues listed above, then run /code-review again."
   Do NOT allow merge without fixing Critical/Important issues.
 
+## 示例
+
+这些是真实运行产物（reviewer agent 实际输出），不是虚构样例：
+- [干净小改动 → 稳健 PASS](examples/sample-pass.md) —— 展示 N/A 维度处理
+- [SQL 注入伪装成重构 → FAIL](examples/sample-fail.md) —— 展示 N/A 不被滥用为安全后门
+
 ## 失败模式与安全边界
 
 dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
