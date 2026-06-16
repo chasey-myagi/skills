@@ -61,12 +61,12 @@ Agent(
 
 ### Reviewer Prompt Template
 
-Read `skills/code-review/code-reviewer.md` for the full reviewer system prompt. Construct the dispatch prompt as:
+Read `code-reviewer.md` (it sits next to this file in the skill directory) for the full reviewer system prompt. Construct the dispatch prompt as:
 
 ```
 你是一个代码审核专家。请严格按照以下审核规范工作：
 
-[paste contents of code-reviewer.md here, or reference it]
+[paste the FULL contents of code-reviewer.md here — the dispatched reviewer is a fresh, independent agent that does NOT share your file access, so it must receive the rubric inline, not as a path reference]
 
 ## 本次审核输入
 
@@ -85,7 +85,7 @@ Read `skills/code-review/code-reviewer.md` for the full reviewer system prompt. 
 ### 语言/框架
 [e.g., Rust / cargo / axum]
 
-请阅读所有变更文件，按规范完成审核并输出报告。
+请阅读所有变更文件，按规范完成审核并输出报告。你是只读审核员：只阅读和评估，不修改任何文件、不执行任何变更命令、不调用外部服务。
 ```
 
 **Important**: The reviewer reads `code-reviewer.md` for review criteria, dimensions, and report format. Do NOT duplicate the methodology in this file.
@@ -105,12 +105,27 @@ Present the full report to the user as-is.
 
 Read the gate result from the report:
 
-- **PASS** (all dimensions ≥ 7.0 AND final ≥ 7.5 AND no Critical issues):
+- **PASS** (all *applicable* dimensions ≥ 7.0 AND final ≥ 7.5 AND no Critical issues; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
   Tell the user: "Code passes quality gate. Ready to merge/proceed."
 
 - **FAIL**:
   Tell the user: "Code needs improvement. Fix the issues listed above, then run /code-review again."
   Do NOT allow merge without fixing Critical/Important issues.
+
+## 示例
+
+这些是真实运行产物（reviewer agent 实际输出），不是虚构样例：
+- [干净小改动 → 稳健 PASS](examples/sample-pass.md) —— 展示 N/A 维度处理
+- [SQL 注入伪装成重构 → FAIL](examples/sample-fail.md) —— 展示 N/A 不被滥用为安全后门
+
+## 失败模式与安全边界
+
+dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
+- **不在 git 仓库 / `git diff` 失败**：让用户直接给文件路径或 SHA 范围，不要猜测变更范围。
+- **diff 为空**：没有变更可审，直接告诉用户并停止。
+- **读不到 `code-reviewer.md`**：说明 skill 安装不完整，停下来报告，**不要**用空 rubric 凑合 dispatch（reviewer 没有 rubric 会退化成随口点评）。
+
+**安全边界**：reviewer 是**只读**的——阅读代码、打分、写报告，**不修改文件、不执行变更、不调用外部服务**。本 skill 也不替用户 merge 或改代码；gate 结论是建议，最终决定权在用户。
 
 ## Notes
 

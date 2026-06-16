@@ -28,7 +28,7 @@ description: >
 
 ## Dispatch
 
-读取 `skills/linus-review/linus-reviewer.md` 获取完整的 Agent 人设提示词。
+读取 `linus-reviewer.md`（与本文件同在 skill 目录下）获取完整的 Agent 人设提示词。注意：被 dispatch 出去的 Linus 审查员是独立 agent，不共享你的文件读取上下文——必须把人设全文**内联**进 dispatch prompt，不能只给路径。
 
 构建 dispatch prompt：
 
@@ -46,7 +46,7 @@ description: >
 ### 语言/框架
 [自动检测]
 
-开始审查。记住：Talk is cheap. Show me the code.
+你是只读审查员：只阅读、吐槽、给建议，不修改任何文件、不执行变更。开始审查。记住：Talk is cheap. Show me the code.
 ```
 
 ## 输出格式
@@ -57,9 +57,15 @@ description: >
 - **Linus 说**（总结性锐评 + 实际可行的改进建议）
 - **评级**（从 "这代码应该被 revert" 到 "还行，勉强能接受"）
 
+## 示例
+
+- [过度抽象 + 两个真 bug → "Please fix and resend."](examples/sample-report.md) —— 真实运行产物
+
 ## 注意
 
 - 这是一个**娱乐性 + 实用性**兼具的 skill
 - Agent 的毒舌是角色扮演，不是人身攻击
 - 吐槽必须指向**真实的代码问题**，不能无脑骂
 - 最终要给出**可操作的改进建议**
+- **只读**：Linus 审查员只看代码、只吐槽、只给建议，**不碰你的文件、不执行变更**
+- 范围确定不了（不在 git 仓库 / 无 diff）时，让用户直接给文件或 SHA，别猜

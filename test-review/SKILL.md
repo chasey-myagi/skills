@@ -61,12 +61,12 @@ Agent(
 
 ### Reviewer Prompt Template
 
-Read `skills/test-review/test-reviewer.md` for the full reviewer system prompt. Construct the dispatch prompt as:
+Read `test-reviewer.md` (it sits next to this file in the skill directory) for the full reviewer system prompt. Construct the dispatch prompt as:
 
 ```
 你是一个测试用例审核专家。请严格按照以下审核规范工作：
 
-[paste contents of test-reviewer.md here, or reference it]
+[paste the FULL contents of test-reviewer.md here — the dispatched reviewer is a fresh, independent agent that does NOT share your file access, so it must receive the rubric inline, not as a path reference]
 
 ## 本次审核输入
 
@@ -85,7 +85,7 @@ Read `skills/test-review/test-reviewer.md` for the full reviewer system prompt. 
 ### 语言/框架
 [e.g., Rust / cargo test]
 
-请阅读所有测试文件，按规范完成审核并输出报告。
+请阅读所有测试文件，按规范完成审核并输出报告。你是只读审核员：只阅读和评估，不修改任何文件、不执行任何变更命令、不调用外部服务。
 ```
 
 **Important**: The reviewer reads `test-reviewer.md` for scoring criteria, dimensions, and report format. Do NOT duplicate the scoring methodology in this file.
@@ -105,12 +105,25 @@ Present the full report to the user as-is.
 
 Read the gate result from the report:
 
-- **PASS** (all dimensions ≥ 7.5 AND final ≥ 8.0):
+- **PASS** (all *applicable* dimensions ≥ 7.5 AND final ≥ 8.0; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
   Tell the user: "Tests pass quality gate. Proceed to implementation."
 
 - **FAIL**:
   Tell the user: "Tests need improvement. Address the missing scenarios listed above, then run /test-review again."
   Do NOT allow implementation to proceed.
+
+## 示例
+
+- [纯函数测试套件 → FAIL（附 8 条具体缺失场景）](examples/sample-report.md) —— 真实运行产物，展示「状态组合」N/A + 缺失场景清单
+
+## 失败模式与安全边界
+
+dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
+- **找不到测试文件**：让用户直接给测试文件路径，不要猜；也可能是测试还没写——如实告知，不要无中生有地审。
+- **不在 git 仓库 / `git diff` 失败**：让用户给路径。
+- **读不到 `test-reviewer.md`**：说明 skill 安装不完整，停下来报告，**不要**用空 rubric 凑合 dispatch。
+
+**安全边界**：reviewer 是**只读**的——阅读测试、打分、列缺失场景，**不修改文件、不运行测试之外的变更、不调用外部服务**。本 skill 不替用户写测试或推进实现；gate 结论是建议。
 
 ## Notes
 
