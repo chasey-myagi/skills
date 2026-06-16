@@ -105,7 +105,7 @@ Present the full report to the user as-is.
 
 Read the gate result from the report:
 
-- **PASS** (all dimensions ≥ 7.5 AND final ≥ 8.0):
+- **PASS** (all *applicable* dimensions ≥ 7.5 AND final ≥ 8.0; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
   Tell the user: "Tests pass quality gate. Proceed to implementation."
 
 - **FAIL**:

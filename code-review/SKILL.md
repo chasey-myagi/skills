@@ -105,7 +105,7 @@ Present the full report to the user as-is.
 
 Read the gate result from the report:
 
-- **PASS** (all dimensions ≥ 7.0 AND final ≥ 7.5 AND no Critical issues):
+- **PASS** (all *applicable* dimensions ≥ 7.0 AND final ≥ 7.5 AND no Critical issues; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
   Tell the user: "Code passes quality gate. Ready to merge/proceed."
 
 - **FAIL**:
