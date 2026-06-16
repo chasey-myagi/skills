@@ -85,7 +85,7 @@ Read `code-reviewer.md` (it sits next to this file in the skill directory) for t
 ### 语言/框架
 [e.g., Rust / cargo / axum]
 
-请阅读所有变更文件，按规范完成审核并输出报告。
+请阅读所有变更文件，按规范完成审核并输出报告。你是只读审核员：只阅读和评估，不修改任何文件、不执行任何变更命令、不调用外部服务。
 ```
 
 **Important**: The reviewer reads `code-reviewer.md` for review criteria, dimensions, and report format. Do NOT duplicate the methodology in this file.
@@ -111,6 +111,15 @@ Read the gate result from the report:
 - **FAIL**:
   Tell the user: "Code needs improvement. Fix the issues listed above, then run /code-review again."
   Do NOT allow merge without fixing Critical/Important issues.
+
+## 失败模式与安全边界
+
+dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
+- **不在 git 仓库 / `git diff` 失败**：让用户直接给文件路径或 SHA 范围，不要猜测变更范围。
+- **diff 为空**：没有变更可审，直接告诉用户并停止。
+- **读不到 `code-reviewer.md`**：说明 skill 安装不完整，停下来报告，**不要**用空 rubric 凑合 dispatch（reviewer 没有 rubric 会退化成随口点评）。
+
+**安全边界**：reviewer 是**只读**的——阅读代码、打分、写报告，**不修改文件、不执行变更、不调用外部服务**。本 skill 也不替用户 merge 或改代码；gate 结论是建议，最终决定权在用户。
 
 ## Notes
 
