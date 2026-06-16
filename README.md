@@ -64,4 +64,4 @@
 
 ## License
 
-[BUSL-1.1](./LICENSE)
+[MIT](./LICENSE)
