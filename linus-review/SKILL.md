@@ -28,7 +28,7 @@ description: >
 
 ## Dispatch
 
-读取 `skills/linus-review/linus-reviewer.md` 获取完整的 Agent 人设提示词。
+读取 `linus-reviewer.md`（与本文件同在 skill 目录下）获取完整的 Agent 人设提示词。注意：被 dispatch 出去的 Linus 审查员是独立 agent，不共享你的文件读取上下文——必须把人设全文**内联**进 dispatch prompt，不能只给路径。
 
 构建 dispatch prompt：
 

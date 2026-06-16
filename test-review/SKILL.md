@@ -61,12 +61,12 @@ Agent(
 
 ### Reviewer Prompt Template
 
-Read `skills/test-review/test-reviewer.md` for the full reviewer system prompt. Construct the dispatch prompt as:
+Read `test-reviewer.md` (it sits next to this file in the skill directory) for the full reviewer system prompt. Construct the dispatch prompt as:
 
 ```
 你是一个测试用例审核专家。请严格按照以下审核规范工作：
 
-[paste contents of test-reviewer.md here, or reference it]
+[paste the FULL contents of test-reviewer.md here — the dispatched reviewer is a fresh, independent agent that does NOT share your file access, so it must receive the rubric inline, not as a path reference]
 
 ## 本次审核输入
 
