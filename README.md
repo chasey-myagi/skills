@@ -48,20 +48,6 @@
   npx skills@latest add chasey-myagi/skills/repo-port
   ```
 
-## Communication
-
-- **caveman** — 极简通信模式：砍 ~75% token，丢冠词、客套、废话，技术细节一字不少。多 agent batch dispatch 时省 context。改编自 [mattpocock/skills/caveman](https://github.com/mattpocock/skills/tree/main/caveman)。
-
-  ```
-  npx skills@latest add chasey-myagi/skills/caveman
-  ```
-
-- **zoom-out** — 一行 trigger，让 agent 拉高一层抽象，给出当前代码区域的模块地图和调用关系。适合接手不熟的代码块。改编自 [mattpocock/skills/zoom-out](https://github.com/mattpocock/skills/tree/main/zoom-out)。
-
-  ```
-  npx skills@latest add chasey-myagi/skills/zoom-out
-  ```
-
 ## License
 
 [MIT](./LICENSE)
