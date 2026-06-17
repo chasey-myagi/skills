@@ -4,6 +4,14 @@
 
 灵感来自 [mattpocock/skills](https://github.com/mattpocock/skills)。安装用 [`skills`](https://github.com/vercel-labs/skills) CLI——每个 skill 下方都给了 `npx skills@latest add <owner>/<repo>/<skill>` 一行命令。
 
+## Develop
+
+- **tdd** — 测试驱动开发的红绿重构工作流：垂直切片 / tracer bullet（一个测试 → 一个实现），测行为不测实现、测试能扛住重构。是下面 review 三件套的上游入口——先用它写测试和实现，再往下游送审。[看真实 TDD session →](tdd/examples/tdd-session.md)
+
+  ```
+  npx skills@latest add chasey-myagi/skills/tdd
+  ```
+
 ## Review
 
 派一个**全新 agent** 当审查员：它不继承你的会话历史、不知道代码是谁写的——这正是在自己代码上自查最缺的东西。评分带置信度门（不确定不报）和 **N/A 维度**（不适用的维度诚实标 N/A、权重重分配，不硬凑分污染 PASS 结论）。
