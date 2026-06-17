@@ -26,28 +26,6 @@
   npx skills@latest add chasey-myagi/skills/linus-review
   ```
 
-## Output
-
-- **research-report** — 把 research findings 编排成单文件 HTML 报告：专业排版、暗/亮主题、可分享。
-
-  ```
-  npx skills@latest add chasey-myagi/skills/research-report
-  ```
-
-- **pdf-html** — 写一份打印为 A4 PDF 时分页干净、带真实页码的单文件 HTML 报告。Sheet-stack 布局 + `@page` margin boxes（Chrome 原生支持）+ 纯 `window.print()` 导出，不用 paged.js polyfill。模板里不预设配色 / 字体，开工前先问用户。
-
-  ```
-  npx skills@latest add chasey-myagi/skills/pdf-html
-  ```
-
-## Migration
-
-- **repo-port** — 把开源仓库忠实移植到另一种语言/生态。五阶段多 agent 流水线（Map → Analyze → Consolidate → Port → Review），写代码前强制一次 consolidation。适合把现成实现作为 base，再叠你自己的优化。
-
-  ```
-  npx skills@latest add chasey-myagi/skills/repo-port
-  ```
-
 ## License
 
 [MIT](./LICENSE)
