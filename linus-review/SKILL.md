@@ -24,13 +24,13 @@ description: >
 
 ## 流程
 
-1. 确定审查范围（git diff / 文件路径）
+1. 确定审查范围（文件路径 / SHA 范围；没给就自动发现：先看未提交变更 `git diff HEAD`，为空再看 `HEAD~1..HEAD`——刚写完还没 commit 是最常见场景）
 2. Dispatch **Linus 审查员 Agent**（独立 agent，使用 linus-reviewer.md 人设）
 3. 输出锐评报告
 
 ## Dispatch
 
-读取 `linus-reviewer.md`（与本文件同在 skill 目录下）获取完整的 Agent 人设提示词。注意：被 dispatch 出去的 Linus 审查员是独立 agent，不共享你的文件读取上下文——必须把人设全文**内联**进 dispatch prompt，不能只给路径。
+读取 `linus-reviewer.md`（与本文件同在 skill 目录下）获取完整的 Agent 人设提示词。注意：被 dispatch 出去的 Linus 审查员读得到仓库文件，但它不知道这个 skill 装在哪（skill 目录在仓库之外）——所以人设全文必须**内联**进 dispatch prompt，不能只给路径。仓库里的代码相反：给 diff + 文件路径就行，让它自己去读，别把完整文件灌进 prompt。
 
 构建 dispatch prompt：
 
@@ -43,7 +43,7 @@ description: >
 [git diff stat + 文件列表]
 
 ### 变更内容
-[diff 或完整文件内容]
+[git diff + 变更文件路径列表；要求审查员先读完整文件再开喷——只看 diff 行喷不准]
 
 ### 语言/框架
 [自动检测]

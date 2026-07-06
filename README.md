@@ -22,7 +22,7 @@
   npx skills@latest add chasey-myagi/skills/code-review
   ```
 
-- **test-review** — 测试评审：6 维评分 + 具体缺失场景清单。TDD 实施前的质量门。[看真实报告 →](test-review/examples/sample-report.md)
+- **test-review** — 测试评审：6 维评分 + 具体缺失场景清单。TDD 实施前的质量门。[看真实报告 →](test-review/examples/sample-fail.md)
 
   ```
   npx skills@latest add chasey-myagi/skills/test-review

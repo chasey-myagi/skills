@@ -27,9 +27,10 @@ Dispatch an independent reviewer agent to evaluate test quality. You (the sessio
 
 If no path specified, auto-discover:
 
-1. `git diff --name-only` for recently added/modified test files
-2. Scan: `tests/`, `**/tests/`, `**/*_test.*`, `**/*_spec.*`, `**/test_*.*`
-3. Tell the user which files will be reviewed
+1. `git status --porcelain` + `git diff HEAD --name-only` for recently added/modified test files（覆盖 staged 和 unstaged——刚写完还没 commit 是最常见场景）
+2. Nothing uncommitted? Try the last commit: `git diff --name-only HEAD~1..HEAD`
+3. Scan: `tests/`, `**/tests/`, `**/*_test.*`, `**/*_spec.*`, `**/test_*.*`
+4. Tell the user which files will be reviewed
 
 If path given (e.g., `/test-review tests/store_test.rs`), use it directly.
 
@@ -66,7 +67,7 @@ Read `test-reviewer.md` (it sits next to this file in the skill directory) for t
 ```
 你是一个测试用例审核专家。请严格按照以下审核规范工作：
 
-[paste the FULL contents of test-reviewer.md here — the dispatched reviewer is a fresh, independent agent that does NOT share your file access, so it must receive the rubric inline, not as a path reference]
+[paste the FULL contents of test-reviewer.md here — the dispatched reviewer can read repo files, but it has no idea where this skill is installed (skill dirs live outside the repo), so the rubric must arrive inline, not as a path reference. Repo files are different: pass paths and let the reviewer read them itself]
 
 ## 本次审核输入
 
@@ -131,4 +132,4 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 
 - Each review is a **fresh agent** — no memory of previous reviews. This prevents bias.
 - If the user disagrees with a score, they can override the gate. But the default is strict enforcement.
-- When used inside `tdd-workflow`, the gate result controls whether the workflow advances to implementation.
+- When used downstream of the `tdd` skill, the gate result controls whether the workflow advances to implementation.

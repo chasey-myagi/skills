@@ -3,7 +3,7 @@ name: code-review
 description: >
   Review implementation code for quality, correctness, and production readiness via an independent
   reviewer agent. Use when: (1) implementation code has been written and needs quality validation,
-  (2) user says /code-review, (3) after TDD implementation phase (Wave B), (4) before merge to main,
+  (2) user says /code-review, (3) after the implementation phase of a TDD loop, (4) before merge to main,
   (5) after a teammate implements features. Acts as a quality gate — catches bugs, architecture issues,
   and security problems before they compound. Triggers on: "review code", "check implementation",
   "is this code ready", "code quality", or any context where implementation quality is in question.
@@ -25,11 +25,12 @@ Dispatch an independent reviewer agent to evaluate implementation quality. You (
 
 ## Step 1: Identify Changes
 
-If no path/SHA specified, auto-discover:
+If no path/SHA specified, auto-discover — check in this order, use the first non-empty:
 
-1. `git diff --name-only HEAD~1..HEAD` for recent changes
-2. Or `git diff --name-only origin/main..HEAD` for branch changes
-3. Tell the user which files will be reviewed
+1. **Uncommitted work first**: `git status --porcelain` → if there are staged/unstaged changes, review those (`git diff HEAD --name-only`). 最常见的场景是"刚写完、还没 commit"——这时 `HEAD~1..HEAD` 审的是上一个 commit，不是用户想审的东西。
+2. `git diff --name-only HEAD~1..HEAD` for the most recent commit
+3. Or `git diff --name-only origin/main..HEAD` for branch changes
+4. Tell the user which files will be reviewed
 
 If path or SHA range given (e.g., `/code-review HEAD~3..HEAD`), use it directly.
 
@@ -41,7 +42,7 @@ Collect these items — they become the reviewer's input:
 |---|---|---|
 | **Changed files** | git diff from Step 1 | Yes |
 | **What was implemented** | Recent commits, plan docs, or infer from diff | Yes |
-| **Plan/requirements** | `docs/superpowers/plans/`, spec docs | No but helpful |
+| **Plan/requirements** | Plan/spec/design docs in the repo (`docs/`, `plans/`, issue links) | No but helpful |
 | **Test results** | `cargo test` / `pytest` / `npm test` output | Yes (run if not available) |
 | **Language/framework** | Infer from file extensions and imports | Yes (auto-detected) |
 
@@ -66,7 +67,7 @@ Read `code-reviewer.md` (it sits next to this file in the skill directory) for t
 ```
 你是一个代码审核专家。请严格按照以下审核规范工作：
 
-[paste the FULL contents of code-reviewer.md here — the dispatched reviewer is a fresh, independent agent that does NOT share your file access, so it must receive the rubric inline, not as a path reference]
+[paste the FULL contents of code-reviewer.md here — the dispatched reviewer can read repo files, but it has no idea where this skill is installed (skill dirs live outside the repo), so the rubric must arrive inline, not as a path reference. Repo files are different: pass paths and let the reviewer read them itself]
 
 ## 本次审核输入
 
@@ -131,5 +132,5 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 
 - Each review is a **fresh agent** — no memory of previous reviews. This prevents bias.
 - If the user disagrees with a finding, they can override the gate. But the default is strict enforcement.
-- When used inside `tdd-workflow`, the gate controls whether the workflow advances to merge/release.
+- When used downstream of the `tdd` skill, the gate controls whether the workflow advances to merge/release.
 - code-review 和 test-review 互补：test-review 审测试质量，code-review 审实现质量。

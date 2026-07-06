@@ -3,9 +3,9 @@ name: tdd
 description: >
   测试驱动开发（TDD）的红-绿-重构工作流。核心是垂直切片 / tracer bullet——
   一个测试 → 一个实现，逐步推进，而不是"先写完所有测试再写实现"。
-  测行为不测实现：通过公共接口验证，测试能扛住重构。它是 skills repo
-  开发质量闭环的入口——TDD 写测试，再交给 test-review / code-review /
-  linus-review 把质量门。
+  测行为不测实现：通过公共接口验证，测试能扛住重构。它是开发质量闭环的
+  入口——TDD 写测试和实现，再交给 test-review / code-review / linus-review
+  （如果装了）把质量门。
   Use when: 开发新功能或修 bug 想测试先行、想要 red-green-refactor、
   想写能扛住重构的集成测试、在写实现前先把行为钉死。
   Triggers on: "tdd", "测试驱动", "red green refactor", "红绿重构",
@@ -16,7 +16,7 @@ description: >
 
 TDD 不是"测试覆盖率"，是一种**设计手段**：先用一个测试说清楚"系统该做什么"，再写最少的代码让它成立。每个测试是一颗 tracer bullet（曳光弹），打通一条端到端的路。
 
-这是 skills repo 开发质量链的**入口**，写完测试往下游接质量门：
+这是开发质量链的**入口**——如果装了配套的 review skill，写完往下游接质量门：
 
 ```
 tdd（写测试 + 实现）
@@ -139,4 +139,4 @@ GREEN: 刚好够过的代码 → 通过
 
 ## 接下来
 
-写完测试和实现，把它们交给下游质量门：`/test-review` 审测试够不够、`/code-review` 审实现稳不稳、`/linus-review` 看有没有能消除的特殊情况。TDD 保证你写了测试，质量门保证测试和实现都够好。
+写完测试和实现，如果装了配套的 review skill，把它们交给下游质量门：`/test-review` 审测试够不够、`/code-review` 审实现稳不稳、`/linus-review` 看有没有能消除的特殊情况。TDD 保证你写了测试，质量门保证测试和实现都够好。没装也不影响本 skill 独立使用。
