@@ -1,10 +1,12 @@
 ---
 name: test-review
 description: >
-  Independent quality-gate review of test cases — scores coverage, boundary, error-path and rigor,
-  then gates whether implementation may proceed. Use when tests have been written and need validation,
-  or as the test gate in a TDD / review-gate workflow.
-  Triggers on: /test-review, "review tests", "are these tests good enough", "test quality".
+  Review test cases for quality, coverage, and rigor via an independent reviewer agent.
+  Use when: (1) tests have been written and need quality validation, (2) user says /test-review,
+  (3) in TDD workflows before implementation, (4) after a teammate writes tests and you need to
+  verify quality. Acts as a quality gate — implementation should NOT proceed until review passes.
+  Triggers on: "review tests", "check test quality", "are these tests good enough", "test coverage",
+  or any context where test adequacy is in question.
 ---
 
 # Test Case Review
@@ -46,7 +48,7 @@ Collect these items — they become the reviewer's input:
 
 ## Step 3: Dispatch Reviewer Agent
 
-Spawn a **new agent** as the reviewer — a fresh agent that starts from only the tests and rubric, carrying no planning or conversation context.
+Spawn a **new agent** as the reviewer. The reviewer must be independent — it should NOT have context from implementation planning or prior conversation. This ensures unbiased review.
 
 Use the Agent tool:
 
@@ -84,25 +86,32 @@ Read `test-reviewer.md` (it sits next to this file in the skill directory) for t
 ### 语言/框架
 [e.g., Rust / cargo test]
 
-请阅读所有测试文件，按规范完成审核并输出报告。你是只读审核员：只阅读测试、评分、列缺失场景。
+请阅读所有测试文件，按规范完成审核并输出报告。你是只读审核员：只阅读和评估，不修改任何文件、不执行任何变更命令、不调用外部服务。
 ```
 
 **Important**: The reviewer reads `test-reviewer.md` for scoring criteria, dimensions, and report format. Do NOT duplicate the scoring methodology in this file.
 
 ## Step 4: Receive and Present Report
 
-The reviewer returns a structured report (schema owned by `test-reviewer.md`). Present it to the user as-is.
+The reviewer returns a structured report with:
+- 6-dimension scores
+- Final score (weighted + E2E bonus)
+- Gate result (PASS/FAIL)
+- Missing scenarios list
+- Suggestions
+
+Present the full report to the user as-is.
 
 ## Step 5: Gate Decision
 
 Read the gate result from the report:
 
-- **PASS** (per the report's Result line):
+- **PASS** (all *applicable* dimensions ≥ 7.5 AND final ≥ 8.0; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
   Tell the user: "Tests pass quality gate. Proceed to implementation."
 
 - **FAIL**:
   Tell the user: "Tests need improvement. Address the missing scenarios listed above, then run /test-review again."
-  Hold implementation until the missing scenarios are added and /test-review re-runs to a PASS.
+  Do NOT allow implementation to proceed.
 
 ## 示例
 
@@ -117,9 +126,10 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 - **不在 git 仓库 / `git diff` 失败**：让用户给路径。
 - **读不到 `test-reviewer.md`**：说明 skill 安装不完整，停下来报告，**不要**用空 rubric 凑合 dispatch。
 
-**安全边界**：reviewer 是**只读**的。本 skill 不替用户写测试或推进实现；gate 结论是建议。
+**安全边界**：reviewer 是**只读**的——阅读测试、打分、列缺失场景，**不修改文件、不运行测试之外的变更、不调用外部服务**。本 skill 不替用户写测试或推进实现；gate 结论是建议。
 
 ## Notes
 
+- Each review is a **fresh agent** — no memory of previous reviews. This prevents bias.
 - If the user disagrees with a score, they can override the gate. But the default is strict enforcement.
 - When used downstream of the `tdd` skill, the gate result controls whether the workflow advances to implementation.

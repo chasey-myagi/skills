@@ -1,9 +1,15 @@
 ---
 name: tdd
 description: >
-  测试驱动开发（TDD）：红-绿-重构，垂直切片一测一实现。Use when: 开发新功能或修 bug 想测试先行、
-  想要 red-green-refactor、或想写能扛住重构的集成测试。
-  Triggers on: "tdd", "测试驱动", "红绿重构", "测试先行", "tracer bullet"
+  测试驱动开发（TDD）的红-绿-重构工作流。核心是垂直切片 / tracer bullet——
+  一个测试 → 一个实现，逐步推进，而不是"先写完所有测试再写实现"。
+  测行为不测实现：通过公共接口验证，测试能扛住重构。它是开发质量闭环的
+  入口——TDD 写测试和实现，再交给 test-review / code-review / linus-review
+  （如果装了）把质量门。
+  Use when: 开发新功能或修 bug 想测试先行、想要 red-green-refactor、
+  想写能扛住重构的集成测试、在写实现前先把行为钉死。
+  Triggers on: "tdd", "测试驱动", "red green refactor", "红绿重构",
+  "test first", "测试先行", "先写测试", "tracer bullet", "test-driven"
 ---
 
 # TDD — 红绿重构，垂直切片
@@ -16,6 +22,7 @@ TDD 不是"测试覆盖率"，是一种**设计手段**：先用一个测试说�
 tdd（写测试 + 实现）
   → test-review    审测试质量（覆盖、边界、有没有在测实现细节）
   → code-review    审实现质量（正确性、安全、架构）
+      ↳ FAIL 且要修：repro（把 finding 钉成红灯测试）→ fix → 机械验收 → code-review round 2
   → linus-review   审工程品味（能不能消除特殊情况）
 ```
 
@@ -116,9 +123,21 @@ GREEN: 刚好够过的代码 → 通过
 [ ] 测试能扛住内部重构
 [ ] 代码是过这个测试的最少量
 [ ] 没有加投机的、没人要的功能
-[ ] 一个测试只断言一个行为
 ```
+
+## 反例黑名单
+
+- 不要水平切片（先写完所有测试再写实现）。
+- 不要 mock 自己的代码。
+- 不要测私有方法 / 内部结构 / 调用次数。
+- 不要在红灯时重构。
+- 不要为了凑覆盖率写"测形状"的空测试。
+- 不要一个测试断言一堆不相关的事——一个测试一个行为。
+
+## 示例
+
+- [examples/tdd-session.md](examples/tdd-session.md) —— `parseDuration` 的完整红绿重构真实记录（5 个 cycle，每步真实测试输出），用 Node 内置 test runner（`node --test`，零依赖）跑出来的，任何人可复现。
 
 ## 接下来
 
-写完测试和实现，把它们交给下游质量门（见开头的链路图）：`/test-review` 审测试够不够、`/code-review` 审实现稳不稳、`/linus-review` 看有没有能消除的特殊情况。没装也不影响本 skill 独立使用。
+写完测试和实现，如果装了配套的 review skill，把它们交给下游质量门：`/test-review` 审测试够不够、`/code-review` 审实现稳不稳、`/linus-review` 看有没有能消除的特殊情况。review 出了 Critical finding 要修时，先 `/repro` 把它钉成红灯测试再 dispatch 修复——红灯就是 tdd 语义下修 bug 的那颗 tracer bullet。TDD 保证你写了测试，质量门保证测试和实现都够好。没装也不影响本 skill 独立使用。

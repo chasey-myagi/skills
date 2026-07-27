@@ -34,6 +34,26 @@
   npx skills@latest add chasey-myagi/skills/linus-review
   ```
 
+## Verify
+
+Review finding 是 LLM 意见，可能真实也可能虚假；dev-agent 修复时可能真验证也可能只是把测试跑绿。这一层把「意见」升格为「可执行证据」。
+
+- **repro** — 给每个可证伪的 Critical/Important finding 派独立 agent 写**红灯复现测试**：写得红 = finding 属实（CONFIRMED，红灯即修复的防篡改验收契约）；诚实尝试后反证为绿 = 误报（REFUTED，解除 blocking）；本质测不了 = NOT-TESTABLE（不可测 ≠ 不成立，保持 blocking 交人审）。窄门设计：架构/品味类不进队列，每轮 cap 3。[CONFIRMED →](repro/examples/sample-confirmed.md) · [REFUTED →](repro/examples/sample-refuted.md) · [NOT-TESTABLE →](repro/examples/sample-not-testable.md)
+
+  ```
+  npx skills@latest add chasey-myagi/skills/repro
+  ```
+
+完整链路：`tdd → test-review → code-review →（FAIL 且要修：repro → fix → 机械验收 → code-review round 2）→ linus-review`。
+
+## Anywhere
+
+- **workflow-run** — 在**任意** agent CLI（claude / codex / kimi / grok）上跑 Claude Code 风格的 workflow 脚本（如 review-gate 的 3-gate PR review）。捆绑零依赖 Node runner：`agent()` 落到各家 headless 模式，schema 强制统一走 validate+retry，`--route` 可把不同 gate 分流到不同家的模型。四家 headless 机制差异矩阵见 [references/cli-matrix.md](workflow-run/references/cli-matrix.md)。
+
+  ```
+  npx skills@latest add chasey-myagi/skills/workflow-run
+  ```
+
 ## License
 
 [MIT](./LICENSE)
