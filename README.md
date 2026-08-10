@@ -12,6 +12,12 @@
   npx skills@latest add chasey-myagi/skills/tdd
   ```
 
+- **issue-fix** — Issue 驱动的 bug 修复编排：8 阶段 + 2 审批门（读 issue → 取证 → 复现钉红灯 → 根因确认 → 方案确认 → 开发 → 回归 → PR），修根因不修症状、红灯即验收契约。复现/测试/PR 的具体命令交给「项目适配层」（project 级 skill / AGENTS.md），本 skill 只带流程骨架和纪律。
+
+  ```
+  npx skills@latest add chasey-myagi/skills/issue-fix
+  ```
+
 ## Review
 
 派一个**全新 agent** 当审查员：它不继承你的会话历史、不知道代码是谁写的——这正是在自己代码上自查最缺的东西。评分带置信度门（不确定不报）和 **N/A 维度**（不适用的维度诚实标 N/A、权重重分配，不硬凑分污染 PASS 结论）。
@@ -45,6 +51,7 @@ Review finding 是 LLM 意见，可能真实也可能虚假；dev-agent 修复�
   ```
 
 完整链路：`tdd → test-review → code-review →（FAIL 且要修：repro → fix → 机械验收 → code-review round 2）→ linus-review`。
+修 bug 走 `issue-fix` 编排全程——它的阶段 3 / 5-6 / 7 分别落在 repro 协议、tdd 纪律和 review 质量门上。
 
 ## Anywhere
 
