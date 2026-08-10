@@ -41,6 +41,7 @@ grok --prompt-file <f> --output-format json --permission-mode bypassPermissions 
 
 1. **codex `--output-schema` 400**：`invalid_json_schema — 'additionalProperties' is required to be supplied and to be false`。OpenAI strict structured outputs 要求每层 object 都带 `additionalProperties:false` 且全字段进 `required`（可选字段要改 `type:[T,"null"]`）。叠加「MCP 工具活跃时被静默忽略」（openai/codex #15451）和 gpt-5 系限定——弃用原生 flag，codex 统一 prompt 注入 + runner 校验重试。
 2. **grok `-p --prompt-file` 组合报错**：`a value is required for '--single <PROMPT>'`。`-p` 就是 `--single`，必须内联值；`--prompt-file` 是独立 flag，二者不组合。
+   另：grok 的 `--output-format` 合法值是 `plain|json|streaming-json|streaming-messages-json`——**没有 `text`**，传错直接 exit 2。
 3. **模型名跨后端泄漏**：全局 `--model haiku` 一度被传给路由到 grok/kimi 的 agent（`unknown model id` / `not configured in config.toml`）。模型名是各家命名空间——runner 现规则：`opts.backend` 显式指定时信任 `opts.model`；`--route` 匹配用 route 自带 `:model`；默认后端用 `--model`，且脚本侧 `opts.model`（CC 别名如 sonnet/haiku）只在 claude 后端生效。
 4. **kimi 的 text 模式不可解析**（输出带 `• ` 装饰 + 按终端宽折行）——必须 `stream-json`。thinking 在 stream-json 中被丢弃，tool progress 走 stderr。
 5. **只解析 stdout**：grok 的更新提示、kimi 的工具进度、RUST_LOG 都走 stderr；stdout 保持干净是四家共同承诺（kimi 除外——它 stdout 是 JSONL 多行，逐行 tryParse）。
