@@ -62,8 +62,8 @@ suite 本身编译不过 / 跑不动、依赖缺失、环境损坏。附真实�
 ## 测试文件约定
 
 - 位置：`tests/repro/`（或语言惯例等价：Rust `tests/repro_*.rs`、Python `tests/repro/test_*.py`、JS/TS `tests/repro/*.test.*`）
-- 命名：`repro_<finding-id>_<slug>`
-- 文件头注释：finding 来源、oracle 出处、`acceptance contract — do not modify`
+- 命名：`repro_<finding-id>_<slug>`。slug 描述**被守护的行为**（如 `access_owner_protection`、`budget_gate_order`），不写评审过程——round / review / findings 这类过程词禁止进文件名。半年后维护者要能从文件名看出这个测试守什么行为，而不是它诞生于第几轮评审。
+- 文件头注释：finding 来源与评审轮次（provenance 归注释，不进文件名）、oracle 出处、`acceptance contract — do not modify`
 - 质量要求：它翻绿后要晋升为正式回归测试，所以现在就要达到 test-review「测试质量」维度的标准——命名描述场景、断言精确具体（不是「不为空」）、测试独立、一个测试一个行为。别造应急负债。
 
 ## 输出格式
