@@ -24,11 +24,13 @@ description: >
 
 ## 流程
 
-1. 确定审查范围（文件路径 / SHA 范围；没给就自动发现：先看未提交变更 `git diff HEAD`，为空再看 `HEAD~1..HEAD`——刚写完还没 commit 是最常见场景）
+1. 确定审查范围：优先显式目标和任务已知源码 checkout，记录绝对路径、branch/HEAD。当前工作检查 staged、unstaged 与 `git ls-files --others --exclude-standard` 的任务相关新文件；`git diff HEAD` 不包含新文件。提交范围先解析成固定 base/head SHA。空 diff 不意味着应该审上一个 commit，先检查已知文件与目标目录；文件级 review 不依赖 Git。
 2. Dispatch **Linus 审查员 Agent**（独立 agent，使用 linus-reviewer.md 人设）
 3. 输出锐评报告
 
 ## Dispatch
+
+session root 与源码目标可以不同，使用绝对路径和 `git -C <source>`。用当前 runtime 的独立 agent 机制，显式传递任务约束与用户/项目指定的 backend/model；指定后端不可用时报告阻塞，不自动换模型。
 
 读取 `linus-reviewer.md`（与本文件同在 skill 目录下）获取完整的 Agent 人设提示词。注意：被 dispatch 出去的 Linus 审查员读得到仓库文件，但它不知道这个 skill 装在哪（skill 目录在仓库之外）——所以人设全文必须**内联**进 dispatch prompt，不能只给路径。仓库里的代码相反：给 diff + 文件路径就行，让它自己去读，别把完整文件灌进 prompt。
 
@@ -40,7 +42,7 @@ description: >
 ## 本次审查
 
 ### 代码范围
-[git diff stat + 文件列表]
+[源码绝对路径 + branch/HEAD + 固定 SHAs 或当前 diff 与新文件列表]
 
 ### 变更内容
 [git diff + 变更文件路径列表；要求审查员先读完整文件再开喷——只看 diff 行喷不准]
@@ -74,5 +76,6 @@ description: >
 - 吐槽必须指向**真实的代码问题**，不能无脑骂
 - 最终要给出**可操作的改进建议**
 - **只读**：Linus 审查员只看代码、只吐槽、只给建议，**不碰你的文件、不执行变更**
-- 范围确定不了（不在 git 仓库 / 无 diff）时，让用户直接给文件或 SHA，别猜
+- 已检查任务上下文、源码路径和新文件后仍无法定位时，只询问缺失范围，不猜测无关 commit。
+- 审查员的只读限制不撤销父任务已批准的实现权限：单独 review 只交 findings；实施任务由父任务继续范围内修复、验证和复审。携带授权来源与限制，跨 skill/委派/续接不重复索取同一批准；明确审批门、发布和 merge 权限照原约定。
 - **绝活是 good taste**：比起抓 bug，它更该指出"能被消除的特殊情况"——这是它区别于满网 Linus prompt 的地方，别退化成又一个只会骂过度抽象的毒舌玩具

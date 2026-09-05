@@ -1,8 +1,26 @@
 # Skills
 
-我日常在 Claude Code 里用的 skill，按需平铺在这个仓库里——拿你想要的，留下你不想要的。
+我日常在 Coding Agent 中使用的 Skills，按需平铺在这个仓库里。公共流程放在这里；各项目的环境、模型分工、资源保护和审批政策留在项目适配层。
 
 灵感来自 [mattpocock/skills](https://github.com/mattpocock/skills)。安装用 [`skills`](https://github.com/vercel-labs/skills) CLI——每个 skill 下方都给了 `npx skills@latest add <owner>/<repo>/<skill>` 一行命令。
+
+## 多 Agent 安装与维护
+
+源码改动回到本仓库；安装目录是分发产物。先把安装目录中的独有修改回收到源码，再更新整个包（包括 reviewer、scripts 和 references），避免只同步 `SKILL.md`。
+
+本地候选版本可用固定版本 CLI 按包和 runtime 安装，源码路径替换为自己的 checkout：
+
+```bash
+npx --yes skills@1.5.23 add /absolute/path/to/skills \
+  --global --skill issue-fix tdd code-review test-review linus-review repro workflow-run \
+  --agent claude-code grok codex cursor --yes
+```
+
+在这个 CLI 版本下，多目标默认将包复制到 `~/.agents/skills/<name>`，再为 Claude/Grok 建立链接；canonical 内容不依赖源码 checkout 保留。Codex/Cursor 使用 universal 目录，因此 CLI 不会清除它们专属目录中的旧副本。已有同名副本时，先备份到 Skills 发现目录以外，再统一到 canonical；需要专属入口时只建立指向 canonical 的链接。其他名称的 Skill 保留。
+
+安装后检查完整包哈希、所有入口的实际指向和无关 Skills 是否变化。记录源码 commit、未提交 diff（若有）、CLI 版本与安装时间。**本地路径安装不写官方来源 lock**，应保留单独安装记录；发布后从明确的远端 ref 安装，再使用 CLI 的来源追踪。不要把本地候选称作已发布版本。
+
+项目约束仍由项目 `AGENTS.md` / Skills 承载：公共 Skill 不指定个人路径、固定模型分工或资源名称，也不替项目增加 commit、发布、merge 或验收权限。
 
 ## Develop
 
@@ -28,7 +46,7 @@
   npx skills@latest add chasey-myagi/skills/code-review
   ```
 
-- **test-review** — 测试评审：6 维评分 + 具体缺失场景清单。TDD 实施前的质量门。[看真实报告 →](test-review/examples/sample-fail.md)
+- **test-review** — 测试评审：6 维评分 + 具体缺失场景清单。在父流程指定的检查点评估测试质量；与垂直 TDD 配合时审当前切片或完整套件。[看真实报告 →](test-review/examples/sample-fail.md)
 
   ```
   npx skills@latest add chasey-myagi/skills/test-review

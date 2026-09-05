@@ -9,7 +9,7 @@
 |---|---|---|---|---|
 | headless 入口 | `claude -p` | `codex exec` | `kimi -p` | `grok -p` / `--prompt-file` |
 | prompt 传递 | **stdin** 或 argv | **stdin**（`-`）或 argv | **仅 argv**（ARG_MAX 风险） | argv 或 `--prompt-file`（**不读 stdin**；`-p` 必须带内联值） |
-| 结构化输出 flag | `--json-schema`（内联） | `--output-schema`（文件路径；strict-mode-only，**弃用**，走 prompt 注入） | 无 | `--json-schema`（内联，implies json） |
+| 结构化输出 flag | `--json-schema`（内联） | `--output-schema`（文件路径；strict-mode-only，**弃用**，走 prompt 注入） | 无 | 原生 `--json-schema` **不使用**（会在 tool 前吐占位 verdict）；schema 走 prompt 注入 + runner 校验重试 |
 | 最终文本提取 | `--output-format json` 信封 `.result`；schema 结果在 `.structured_output` | `-o <file>`（--output-last-message）文件内容 | `--output-format stream-json` JSONL 里最后一条 `role=assistant` 且有 `content` 的行 | json 信封 `.text`（schema 时需二次 `JSON.parse`） |
 | usage/cost | `.usage` / `.total_cost_usd` | `--json` 事件流 turn.completed.usage | **无** | `.usage` / `.total_cost_usd`（`cost_is_partial` 时整体省略） |
 | 权限 flag | `--permission-mode bypassPermissions`（或 `--allowedTools` 白名单） | `-s read-only\|workspace-write\|danger-full-access` | 无（print 模式固定 auto policy） | `--permission-mode bypassPermissions`；另有 `--tools`/`--deny` 细粒度 |
@@ -17,6 +17,7 @@
 | resume | `--resume <session_id>` | `codex exec resume <id>` | `-r <sessionId>`（stream-json 的 resume_hint meta 行给 id） | `--resume <sessionId>` |
 | 内建超时 | 无 | 无 | 无 | 无（runner 自管 SIGTERM→SIGKILL） |
 | 退出码 | 0/非0 + 信封 `is_error` | 0/1 | 0/1；信号 129/130/143 | 0/1/130/143；错误输出 `{"type":"error",...}` |
+| runner 如何判定执行失败 | 非 0 即使信封看起来合法也失败；`is_error` 在退出码 0 时仍检出 | 非 0 即失败（不采信 last-message 当成功） | 非 0 即失败 | 非 0 即使信封看起来合法也失败；`type=error` 在退出码 0 时仍检出 |
 
 ## Adapter 命令模板（run.mjs 实际使用）
 
@@ -33,8 +34,9 @@ codex exec --skip-git-repo-check --ephemeral -s workspace-write \
 kimi -p "<prompt>" --output-format stream-json [-m M]
 
 # grok — --prompt-file（不与 -p 组合；-p 是 --single 必须带内联值）
+# schema 不走 --json-schema，走 prompt 注入；--max-turns 必带（默认 40，WORKFLOW_RUN_GROK_MAX_TURNS）
 grok --prompt-file <f> --output-format json --permission-mode bypassPermissions \
-  --no-auto-update --cwd <cwd> [-m M] [--json-schema '<inline>']
+  --no-auto-update --max-turns <N> --cwd <cwd> [-m M] [--reasoning-effort E]
 ```
 
 ## 实测踩过的坑（冒烟记录，2026-07-27）
@@ -42,9 +44,11 @@ grok --prompt-file <f> --output-format json --permission-mode bypassPermissions 
 1. **codex `--output-schema` 400**：`invalid_json_schema — 'additionalProperties' is required to be supplied and to be false`。OpenAI strict structured outputs 要求每层 object 都带 `additionalProperties:false` 且全字段进 `required`（可选字段要改 `type:[T,"null"]`）。叠加「MCP 工具活跃时被静默忽略」（openai/codex #15451）和 gpt-5 系限定——弃用原生 flag，codex 统一 prompt 注入 + runner 校验重试。
 2. **grok `-p --prompt-file` 组合报错**：`a value is required for '--single <PROMPT>'`。`-p` 就是 `--single`，必须内联值；`--prompt-file` 是独立 flag，二者不组合。
    另：grok 的 `--output-format` 合法值是 `plain|json|streaming-json|streaming-messages-json`——**没有 `text`**，传错直接 exit 2。
-3. **模型名跨后端泄漏**：全局 `--model haiku` 一度被传给路由到 grok/kimi 的 agent（`unknown model id` / `not configured in config.toml`）。模型名是各家命名空间——runner 现规则：`opts.backend` 显式指定时信任 `opts.model`；`--route` 匹配用 route 自带 `:model`；默认后端用 `--model`，且脚本侧 `opts.model`（CC 别名如 sonnet/haiku）只在 claude 后端生效。
+3. **模型名跨后端泄漏**：全局 `--model haiku` 一度被传给路由到 grok/kimi 的 agent（`unknown model id` / `not configured in config.toml`）。模型名是各家命名空间——runner 现规则：`opts.backend` 显式指定时信任 `opts.model`；`--route` 匹配用 route 自带 `:model`；默认后端用 `--model`，且脚本侧 `opts.model`（CC 别名如 sonnet/haiku）只在 claude 后端生效。没有显式模型时 sidecar 记 `null`，不猜测 CLI 默认模型。显式绑定不会因为宿主是另一家而被改写。
 4. **kimi 的 text 模式不可解析**（输出带 `• ` 装饰 + 按终端宽折行）——必须 `stream-json`。thinking 在 stream-json 中被丢弃，tool progress 走 stderr。
 5. **只解析 stdout**：grok 的更新提示、kimi 的工具进度、RUST_LOG 都走 stderr；stdout 保持干净是四家共同承诺（kimi 除外——它 stdout 是 JSONL 多行，逐行 tryParse）。
+6. **grok `--json-schema` 占位 verdict**：原生 schema flag 会把第一次模型输出塑成合法 JSON，发生在任何读 diff 的 tool 调用之前。审查 gate 因此拿到「长得像 FAIL 的占位结论」。runner 改为 prompt 注入 + 本地校验重试，并带 `--max-turns`（`--prompt-file` 无此 flag 时是单轮）。`--effort` / `opts.effort` 映射为 grok `--reasoning-effort`；其他后端忽略该档位。
+7. **合法信封 + 非 0 退出码**：adapter 先看进程退出码和原生错误信封，再把 stdout 当成功结果。AUTH/QUOTA 只从 stderr 与原生错误信封字段分类，不从 review 正文分类。
 
 ## Prior art（2026-07 调研）
 

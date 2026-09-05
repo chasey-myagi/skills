@@ -10,17 +10,22 @@
 // Usage:
 //   node run.mjs <workflow.js> [--args '<json>'] [--backend claude|codex|kimi|grok]
 //                [--model <m>] [--route '<label-glob>=<backend>[:<model>]']...
-//                [--concurrency N] [--timeout SECONDS] [--cwd DIR] [--verbose]
+//                [--concurrency N] [--timeout SECONDS] [--cwd DIR] [--effort E]
+//                [--status-file PATH] [--task-id ID] [--verbose]
 //
 // Contract: stdout carries EXACTLY ONE JSON document (the workflow's return value).
-// All progress/log lines go to stderr. Exit 0 on success, 1 on failure.
+// All progress/log lines go to stderr.
+// Exit 0: workflow fully executed (including a legitimate review verdict of FAIL).
+// Exit 1: usage error or the workflow script threw.
+// Exit 2: an agent CLI execution failed (even if the script synthesizes a FAIL verdict).
 //
 // Prior art (validated 2026-07): six-ddc/codex-dynamic-workflows (multi-backend, Bun IPC),
 // scasella/claude-dynamic-workflows-codex (codex app-server). This implementation is
 // intentionally smaller: 4 CLI adapters, unified schema validate+retry, no viewer/resume.
 
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { closeSync, lstatSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -37,6 +42,9 @@ for (let i = 0; i < argvIn.length; i++) {
   else if (a === "--concurrency") flags.concurrency = parseInt(argvIn[++i], 10);
   else if (a === "--timeout") flags.timeout = parseInt(argvIn[++i], 10);
   else if (a === "--cwd") flags.cwd = argvIn[++i];
+  else if (a === "--effort") flags.effort = argvIn[++i];
+  else if (a === "--status-file") flags.statusFile = argvIn[++i];
+  else if (a === "--task-id") flags.taskId = argvIn[++i];
   else if (a === "--verbose") flags.verbose = true;
   else if (a === "--help" || a === "-h") { usage(); process.exit(0); }
   else if (!scriptPath) scriptPath = a;
@@ -48,18 +56,31 @@ function usage() {
   err(`workflow-run: run a Claude Code-style workflow script on any agent CLI backend.
 usage: node run.mjs <workflow.js> [--args '<json>'] [--backend claude|codex|kimi|grok]
        [--model <m>] [--route '<label-glob>=<backend>[:<model>]']...
-       [--concurrency N] [--timeout SECONDS] [--cwd DIR] [--verbose]`);
+       [--concurrency N] [--timeout SECONDS] [--cwd DIR] [--effort E]
+       [--status-file PATH] [--task-id ID] [--verbose]
+
+--effort is the reasoning tier for backends whose CLI exposes one (grok today).
+A script's per-agent opts.effort wins over it; backends without the flag ignore
+both rather than failing, so one script runs unchanged on every backend.
+
+--status-file is created exclusively (refuses an existing path, including a
+dangling symlink) and updated only by this run. --task-id is stored in that
+sidecar; without --status-file it is harmless metadata on stderr.`);
 }
 
 const DEFAULT_BACKEND = flags.backend || process.env.WORKFLOW_RUN_BACKEND || "claude";
 const DEFAULT_TIMEOUT_MS = (flags.timeout || 1200) * 1000;
 const CONCURRENCY = flags.concurrency || 6;
+// Turn budget for grok's single-turn headless modes; see the grok adapter.
+const GROK_MAX_TURNS = Number(process.env.WORKFLOW_RUN_GROK_MAX_TURNS) || 40;
 const BASE_CWD = flags.cwd || process.cwd();
+const TASK_ID = flags.taskId || null;
 
 function err(...a) { process.stderr.write(a.join(" ") + "\n"); }
 function die(msg) { err(`workflow-run: ${msg}`); process.exit(1); }
 function trunc(s, n = 600) { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + ` …[${s.length} chars]` : s; }
 function now() { return Date.now(); }
+function isoNow() { return new Date().toISOString(); }
 
 // ---------------------------------------------------------------- subprocess
 function sh(cmd, args, { stdinData, cwd, timeoutMs, env } = {}) {
@@ -69,7 +90,7 @@ function sh(cmd, args, { stdinData, cwd, timeoutMs, env } = {}) {
       env: { ...process.env, ...(env || {}) },
       stdio: ["pipe", "pipe", "pipe"],
     });
-    let stdout = "", stderr = "", timedOut = false, settled = false;
+    let stdout = "", stderr = "", timedOut = false, settled = false, stdinError;
     const t = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
@@ -77,8 +98,10 @@ function sh(cmd, args, { stdinData, cwd, timeoutMs, env } = {}) {
     }, timeoutMs || DEFAULT_TIMEOUT_MS);
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
-    child.on("error", (e) => { if (!settled) { settled = true; clearTimeout(t); resolve({ code: -1, stdout, stderr: String(e), timedOut }); } });
-    child.on("close", (code) => { if (!settled) { settled = true; clearTimeout(t); resolve({ code, stdout, stderr, timedOut }); } });
+    child.on("error", (e) => { if (!settled) { settled = true; clearTimeout(t); resolve({ code: -1, signal: null, stdout, stderr: String(e), timedOut, spawnErr: e }); } });
+    child.on("close", (code, signal) => { if (!settled) { settled = true; clearTimeout(t); resolve({ code, signal, stdout, stderr, timedOut, stdinError, spawnErr: undefined }); } });
+    // Early authentication exits can close the pipe before a long prompt is written.
+    child.stdin.on("error", (e) => { stdinError = e; });
     if (stdinData != null) child.stdin.write(stdinData);
     child.stdin.end();
   });
@@ -156,8 +179,65 @@ function schemaInstruction(schema) {
   return `\n\n---\nOUTPUT FORMAT (mandatory): your FINAL reply must be ONLY a single JSON object that validates against this JSON Schema — no markdown fences, no commentary, nothing before or after the JSON:\n${JSON.stringify(schema)}`;
 }
 
+// ---------------------------------------------------------------- execution classification
+// Diagnostic only: never fallback, never retry auth, never mine a successful review body.
+const BLOCKED = new Set(["AUTH_REQUIRED", "QUOTA_EXCEEDED", "BACKEND_UNAVAILABLE"]);
+const AUTH_RE = /failed to authenticate|not logged in|please (?:run |use )?\/login|login required|unauthoriz(?:ed|ation)|unauthenticated|authentication (?:required|failed|error)|invalid (?:api[ -]?key|token)|not authenticated|no credentials|missing (?:api[ -]?key|credentials)|please log in|run [`'"]?codex login|auth(?:entication)? required/i;
+const QUOTA_RE = /quota exceeded|exceeded your quota|rate limit(?:ed| exceeded)?|usage limit|out of credits|insufficient credits|billing quota|resource exhausted/i;
+
+function failRun(errorCode, message) {
+  const e = new Error(message);
+  e.errorCode = errorCode;
+  e.agentStatus = BLOCKED.has(errorCode) ? "blocked" : "failed";
+  return e;
+}
+
+function isNativeError(backendName, envelope) {
+  if (!envelope || typeof envelope !== "object") return false;
+  if (backendName === "claude" && envelope.is_error) return true;
+  if (backendName === "grok" && envelope.type === "error") return true;
+  return false;
+}
+
+function nativeErrorText(backendName, envelope) {
+  if (!isNativeError(backendName, envelope)) return "";
+  if (backendName === "claude") return String(envelope.result || envelope.subtype || "");
+  if (backendName === "grok") return String(envelope.message || "");
+  return "";
+}
+
+function matchAuthQuota(text) {
+  const s = String(text || "");
+  if (AUTH_RE.test(s)) return "AUTH_REQUIRED";
+  if (QUOTA_RE.test(s)) return "QUOTA_EXCEEDED";
+  return null;
+}
+
+function isUnavailable(r) {
+  if (r.spawnErr && r.spawnErr.code === "ENOENT") return true;
+  if (r.code === -1 && /ENOENT/.test(r.stderr || "")) return true;
+  return false;
+}
+
+function throwIfCliFailed(backendName, r, envelope) {
+  if (r.timedOut) throw failRun("TIMEOUT", `${backendName}: timed out`);
+  if (isUnavailable(r)) throw failRun("BACKEND_UNAVAILABLE", `${backendName}: executable not found`);
+  const nativeErr = isNativeError(backendName, envelope);
+  const nativeText = nativeErrorText(backendName, envelope);
+  if (!nativeErr && r.code === 0) {
+    if (r.stdinError) throw failRun("PROCESS_EXIT", `${backendName}: could not deliver prompt (${r.stdinError.code || "stdin error"})`);
+    return;
+  }
+  // AUTH/QUOTA come from CLI diagnostics, never from a review body on stdout.
+  const haystack = [r.stderr, nativeText].filter(Boolean).join("\n");
+  const aq = matchAuthQuota(haystack);
+  if (aq) throw failRun(aq, `${backendName}: ${aq}`);
+  if (r.code !== 0) throw failRun("PROCESS_EXIT", `${backendName}: exit ${r.code}: ${trunc(r.stderr || r.stdout)}`);
+  throw failRun("INVALID_OUTPUT", `${backendName}: ${trunc(nativeText || "error envelope")}`);
+}
+
 // ---------------------------------------------------------------- backends
-// Each adapter: run(prompt, {schema, model, cwd, timeoutMs}) -> {text, json?}
+// Each adapter: run(prompt, {schema, model, cwd, timeoutMs, effort}) -> {text, json?}
 // Throws on process/transport failure. Schema validation is the caller's job (unified layer).
 
 const BACKENDS = {
@@ -169,10 +249,9 @@ const BACKENDS = {
       if (o.model) args.push("--model", o.model);
       if (o.schema) args.push("--json-schema", JSON.stringify(o.schema));
       const r = await sh("claude", args, { stdinData: prompt, cwd: o.cwd, timeoutMs: o.timeoutMs });
-      if (r.timedOut) throw new Error("claude: timed out");
       const env = lastJsonObject(r.stdout);
-      if (!env) throw new Error(`claude: unparseable output (exit ${r.code}): ${trunc(r.stdout || r.stderr)}`);
-      if (env.is_error) throw new Error(`claude: ${trunc(env.result || env.subtype || r.stderr)}`);
+      throwIfCliFailed("claude", r, env);
+      if (!env) throw failRun("INVALID_OUTPUT", `claude: unparseable output (exit ${r.code}): ${trunc(r.stdout || r.stderr)}`);
       return { text: env.result ?? "", json: env.structured_output };
     },
   },
@@ -192,13 +271,10 @@ const BACKENDS = {
         if (o.model) args.push("-m", o.model);
         args.push("-");
         const r = await sh("codex", args, { stdinData: prompt, timeoutMs: o.timeoutMs });
-        if (r.timedOut) throw new Error("codex: timed out");
+        throwIfCliFailed("codex", r);
         let text = "";
         try { text = readFileSync(outFile, "utf8").trim(); } catch {}
-        if (!text) {
-          if (r.code !== 0) throw new Error(`codex: exit ${r.code}: ${trunc(r.stderr || r.stdout)}`);
-          throw new Error(`codex: empty last-message (turn may have ended on a non-agent_message item)`);
-        }
+        if (!text) throw failRun("INVALID_OUTPUT", "codex: empty last-message (turn may have ended on a non-agent_message item)");
         return { text };
       } finally { rmSync(tmp, { recursive: true, force: true }); }
     },
@@ -219,20 +295,22 @@ const BACKENDS = {
         const args = ["-p", p, "--output-format", "stream-json"];
         if (o.model) args.push("-m", o.model);
         const r = await sh("kimi", args, { cwd: o.cwd, timeoutMs: o.timeoutMs });
-        if (r.timedOut) throw new Error("kimi: timed out");
+        throwIfCliFailed("kimi", r);
         let text = "";
         for (const line of r.stdout.split("\n")) {
           const j = tryParse(line);
           if (j && j.role === "assistant" && typeof j.content === "string" && j.content.trim()) text = j.content;
         }
-        if (!text) throw new Error(`kimi: no assistant message (exit ${r.code}): ${trunc(r.stderr || r.stdout)}`);
+        if (!text) throw failRun("INVALID_OUTPUT", `kimi: no assistant message (exit ${r.code}): ${trunc(r.stderr || r.stdout)}`);
         return { text };
       } finally { if (tmp) rmSync(tmp, { recursive: true, force: true }); }
     },
   },
 
-  // grok -p: prompt via --prompt-file (no stdin); JSON envelope in stdout;
-  // native --json-schema (inline) constrains the model, result JSON is in .text.
+  // grok -p: prompt via --prompt-file (no stdin); JSON envelope in stdout.
+  // --json-schema is not used: it shapes the first message before any tool call, so a
+  // review agent returns a schema-valid placeholder instead of a verdict. --max-turns
+  // is required because --prompt-file is a single-turn prompt without it.
   grok: {
     async run(prompt, o) {
       const tmp = mkdtempSync(join(tmpdir(), "wfrun-grok-"));
@@ -240,14 +318,14 @@ const BACKENDS = {
         const pf = join(tmp, "prompt.md");
         writeFileSync(pf, prompt);
         const args = ["--prompt-file", pf, "--output-format", "json",
-          "--permission-mode", "bypassPermissions", "--no-auto-update", "--cwd", o.cwd || BASE_CWD];
+          "--permission-mode", "bypassPermissions", "--no-auto-update",
+          "--max-turns", String(GROK_MAX_TURNS), "--cwd", o.cwd || BASE_CWD];
         if (o.model) args.push("-m", o.model);
-        if (o.schema) args.push("--json-schema", JSON.stringify(o.schema));
+        if (o.effort) args.push("--reasoning-effort", o.effort);
         const r = await sh("grok", args, { timeoutMs: o.timeoutMs });
-        if (r.timedOut) throw new Error("grok: timed out");
         const env = lastJsonObject(r.stdout);
-        if (!env) throw new Error(`grok: unparseable output (exit ${r.code}): ${trunc(r.stdout || r.stderr)}`);
-        if (env.type === "error") throw new Error(`grok: ${trunc(env.message)}`);
+        throwIfCliFailed("grok", r, env);
+        if (!env) throw failRun("INVALID_OUTPUT", `grok: unparseable output (exit ${r.code}): ${trunc(r.stdout || r.stderr)}`);
         const text = env.text ?? "";
         return { text, json: o.schema ? extractJson(text) : undefined };
       } finally { rmSync(tmp, { recursive: true, force: true }); }
@@ -273,6 +351,102 @@ function pickBackend(label) {
 }
 if (!BACKENDS[DEFAULT_BACKEND]) die(`unknown backend: ${DEFAULT_BACKEND}`);
 
+// ---------------------------------------------------------------- status sidecar
+const execCounts = { failed: 0, blocked: 0 };
+
+function persistSidecar(path, snapshot, owner) {
+  const tmp = `${path}.${randomUUID()}.tmp`;
+  let fd;
+  try {
+    const current = lstatSync(path);
+    if (!current.isFile() || current.dev !== owner.dev || current.ino !== owner.ino ||
+        tryParse(readFileSync(path, "utf8"))?.run_id !== snapshot.run_id) {
+      throw new Error("status file is no longer owned by this run");
+    }
+    fd = openSync(tmp, "wx", 0o600);
+    writeFileSync(fd, JSON.stringify(snapshot, null, 2) + "\n");
+    renameSync(tmp, path);
+    return lstatSync(path);
+  } catch (e) {
+    e.statusWriteFailure = true;
+    throw e;
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+      rmSync(tmp, { force: true });
+    }
+  }
+}
+
+function createSidecar(path, taskId) {
+  const snapshot = {
+    schema_version: 1,
+    run_id: randomUUID(),
+    task_id: taskId || null,
+    status: "running",
+    started_at: isoNow(),
+    finished_at: null,
+    agents: [],
+  };
+  let fd;
+  try {
+    fd = openSync(path, "wx");
+  } catch (e) {
+    if (e.code === "EEXIST") die(`status file already exists: ${path}`);
+    die(`cannot create status file ${path}: ${e.message}`);
+  }
+  try {
+    writeFileSync(fd, JSON.stringify(snapshot, null, 2) + "\n");
+  } finally {
+    closeSync(fd);
+  }
+  return snapshot;
+}
+
+function makeStatusTracker(path, taskId) {
+  const noop = {
+    async beginAgent() {},
+    async endAgent() {},
+    async finish() {},
+  };
+  if (!path) return noop;
+  const snapshot = createSidecar(path, taskId);
+  let owner = lstatSync(path);
+  let chain = Promise.resolve();
+  function enqueue(mut) {
+    chain = chain.then(() => {
+      mut();
+      owner = persistSidecar(path, snapshot, owner);
+    });
+    return chain;
+  }
+  return {
+    beginAgent(rec) {
+      return enqueue(() => snapshot.agents.push(rec));
+    },
+    endAgent(id, fields) {
+      return enqueue(() => {
+        const a = snapshot.agents.find((x) => x.id === id);
+        if (a) Object.assign(a, fields);
+      });
+    },
+    finish(overall) {
+      return enqueue(() => {
+        snapshot.status = overall;
+        snapshot.finished_at = isoNow();
+      });
+    },
+  };
+}
+
+function overallFromAgents() {
+  if (execCounts.failed) return "failed";
+  if (execCounts.blocked) return "blocked";
+  return "completed";
+}
+
+let tracker = makeStatusTracker(null, null);
+
 // ---------------------------------------------------------------- runtime primitives
 let agentCounter = 0;
 let currentPhase = "";
@@ -284,7 +458,25 @@ const sem = (() => {
   };
 })();
 
-async function agentCall(prompt, opts = {}) {
+const pendingAgents = new Set();
+function agentCall(prompt, opts = {}) {
+  const job = executeAgentCall(prompt, opts);
+  pendingAgents.add(job);
+  job.then(() => pendingAgents.delete(job), () => pendingAgents.delete(job));
+  return job;
+}
+
+async function drainAgents() {
+  let failure;
+  while (pendingAgents.size) {
+    for (const result of await Promise.allSettled([...pendingAgents])) {
+      if (result.status === "rejected") failure ??= result.reason;
+    }
+  }
+  if (failure) throw failure;
+}
+
+async function executeAgentCall(prompt, opts = {}) {
   const label = opts.label || `agent#${++agentCounter}`;
   const phaseTag = opts.phase || currentPhase || "-";
   // Model names are per-backend namespaces — never leak one backend's model to another.
@@ -293,7 +485,7 @@ async function agentCall(prompt, opts = {}) {
   // opts.model is honored only on claude, where CC aliases like 'haiku' are meaningful).
   const route = pickBackend(label);
   let backendName, model;
-  if (opts.backend && BACKENDS[opts.backend]) {
+  if (opts.backend) {
     backendName = opts.backend;
     model = opts.model;
   } else if (route.matched) {
@@ -305,15 +497,34 @@ async function agentCall(prompt, opts = {}) {
   }
   const backend = BACKENDS[backendName];
   const schema = opts.schema;
-  const runOpts = { schema, model, cwd: BASE_CWD, timeoutMs: DEFAULT_TIMEOUT_MS };
+  // Reasoning tier travels the same route as model: the script may set it per
+  // agent, --effort is the run-wide default. Backends whose CLI has no such flag
+  // drop it in their adapter, so a script written for one backend still runs on
+  // the others instead of failing on an unknown argument.
+  const effort = opts.effort || flags.effort;
+  const runOpts = { schema, model, effort, cwd: BASE_CWD, timeoutMs: DEFAULT_TIMEOUT_MS };
+  const agentId = randomUUID();
 
   await sem.acquire();
   const t0 = now();
   err(`[${phaseTag}] ${label} → ${backendName}${model ? `(${model})` : ""} …`);
   try {
+    await tracker.beginAgent({
+      id: agentId,
+      label,
+      backend: backendName,
+      model: model ?? null,
+      status: "running",
+      error_code: null,
+    });
+    if (!Object.hasOwn(BACKENDS, backendName)) {
+      throw failRun("BACKEND_UNAVAILABLE", `unsupported backend: ${backendName}`);
+    }
     // Backends without a (usable) native schema flag get the instruction in the prompt:
-    // kimi has no flag at all; codex's flag is strict-mode-only (see adapter comment).
-    const needsInstruction = schema && (backendName === "kimi" || backendName === "codex");
+    // kimi has no flag at all; codex's flag is strict-mode-only (see adapter comment);
+    // grok's flag is usable only for single-shot answers — see the grok adapter.
+    const needsInstruction =
+      schema && (backendName === "kimi" || backendName === "codex" || backendName === "grok");
     let out = await backend.run(needsInstruction ? prompt + schemaInstruction(schema) : prompt, runOpts);
 
     if (schema) {
@@ -332,15 +543,23 @@ async function agentCall(prompt, opts = {}) {
         obj = out.json !== undefined ? out.json : extractJson(out.text);
         errors = obj === undefined ? ["no JSON object found in output"] : validate(schema, obj);
       }
-      if (errors.length) throw new Error(`schema validation failed after retries: ${errors.join("; ")}`);
+      if (errors.length) throw failRun("INVALID_OUTPUT", `schema validation failed after retries: ${errors.join("; ")}`);
       err(`[${phaseTag}] ${label} ✓ ${(Math.round((now() - t0) / 100) / 10).toFixed(1)}s`);
+      await tracker.endAgent(agentId, { status: "completed", error_code: null });
       return obj;
     }
     err(`[${phaseTag}] ${label} ✓ ${(Math.round((now() - t0) / 100) / 10).toFixed(1)}s`);
+    await tracker.endAgent(agentId, { status: "completed", error_code: null });
     return out.text;
   } catch (e) {
+    if (e.statusWriteFailure) throw e;
     // Match Claude Code Workflow semantics: a dead agent resolves to null, not a rejection.
+    const agentStatus = e.agentStatus || "failed";
+    const errorCode = e.errorCode || "INVALID_OUTPUT";
+    if (agentStatus === "failed") execCounts.failed++;
+    else if (agentStatus === "blocked") execCounts.blocked++;
     err(`[${phaseTag}] ${label} ✗ ${e.message}`);
+    await tracker.endAgent(agentId, { status: agentStatus, error_code: errorCode });
     return null;
   } finally {
     sem.release();
@@ -383,14 +602,22 @@ try {
   fn = new AsyncFunction("agent", "parallel", "pipeline", "phase", "log", "args", "budget", "workflow", body);
 } catch (e) { die(`script syntax error: ${e.message}`); }
 
+tracker = makeStatusTracker(flags.statusFile, TASK_ID);
+
 const t0 = now();
-err(`workflow-run: ${scriptPath} | backend=${DEFAULT_BACKEND}${flags.model ? ` model=${flags.model}` : ""} | concurrency=${CONCURRENCY} | cwd=${BASE_CWD}`);
+err(`workflow-run: ${scriptPath} | backend=${DEFAULT_BACKEND}${flags.model ? ` model=${flags.model}` : ""}${TASK_ID ? ` task=${TASK_ID}` : ""} | concurrency=${CONCURRENCY} | cwd=${BASE_CWD}`);
 try {
   const result = await fn(runtime.agent, runtime.parallel, runtime.pipeline, runtime.phase, runtime.log, runtime.args, runtime.budget, runtime.workflow);
+  await drainAgents();
+  const overall = overallFromAgents();
+  await tracker.finish(overall);
   err(`\nworkflow-run: done in ${Math.round((now() - t0) / 1000)}s`);
   process.stdout.write(JSON.stringify(result ?? null, null, 2) + "\n");
-  process.exit(0);
+  process.exit(overall === "completed" ? 0 : 2);
 } catch (e) {
+  try { await drainAgents(); } catch {}
+  try { await tracker.finish("failed"); }
+  catch (statusError) { err(`workflow-run: status update failed: ${statusError.message}`); }
   err(`\nworkflow-run: FAILED after ${Math.round((now() - t0) / 1000)}s: ${e.stack || e.message}`);
   process.exit(1);
 }

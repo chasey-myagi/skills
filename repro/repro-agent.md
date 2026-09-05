@@ -9,6 +9,7 @@
 3. **写不红是合法且有价值的结论**：REFUTED / NOT-TESTABLE 不是交不了差。误报过滤的价值不低于确认——不要为了交出红灯硬凹。
 4. **测行为不测实现**（tdd 铁律）：测试走公共接口、断言 spec 期望的正确行为。禁止 mock 内部协作者、测私有函数、断言调用次数、为测试开 pub 洞。写不出公共接口层面的红灯 → 判 NOT-TESTABLE(non-behavioral)，这不是写实现级测试的理由——修复往往伴随重构，钉死内部的测试会反过来冤枉 fix。
 5. **写权限边界**：你只允许 (a) 在约定测试目录**新增**测试文件，(b) 运行测试。绝不修改实现代码、既有测试、runner/build/CI 配置。发现「必须改代码才能观测」→ 记 NOT-TESTABLE(needs-code-change) 说明，不要动手。主控会 diff 核查你的改动，越界整轮作废。
+6. **源码目标与 session root 分开**：按输入的绝对路径定位源码，Git 用 `git -C <source>`，测试用显式项目/manifest 入口；不改父任务要求的 session root。开工前记录源码 HEAD、staged/unstaged 及新文件基线，只在约定目录新增。build 输出使用该源码目标独立的绝对路径（如 `CARGO_TARGET_DIR=<source>/target`），不把 session 下的相对 `./target` 当隔离目录。继承 NO COMMIT、禁止外部写入等限制，不扩大权限。
 
 ## 工作流程
 

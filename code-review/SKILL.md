@@ -25,14 +25,12 @@ Dispatch an independent reviewer agent to evaluate implementation quality. You (
 
 ## Step 1: Identify Changes
 
-If no path/SHA specified, auto-discover — check in this order, use the first non-empty:
+Use the explicit target or the task's known source checkout first. The agent's session directory may differ from that checkout; use absolute file paths and `git -C <source>` without changing the session root.
 
-1. **Uncommitted work first**: `git status --porcelain` → if there are staged/unstaged changes, review those (`git diff HEAD --name-only`). 最常见的场景是"刚写完、还没 commit"——这时 `HEAD~1..HEAD` 审的是上一个 commit，不是用户想审的东西。
-2. `git diff --name-only HEAD~1..HEAD` for the most recent commit
-3. Or `git diff --name-only origin/main..HEAD` for branch changes
-4. Tell the user which files will be reviewed
-
-If path or SHA range given (e.g., `/code-review HEAD~3..HEAD`), use it directly.
+1. Record the source path, branch, and HEAD. Honor an explicit file list or commit range; resolve refs to full SHAs before dispatch.
+2. For current work, inspect `git status --porcelain`, staged and unstaged diffs, and `git ls-files --others --exclude-standard`. Include relevant new files explicitly: `git diff HEAD` does not include untracked files. Limit the review to this task's changes; preserve unrelated work.
+3. For branch review, use the known PR/base and head. Review the last commit only when that is the intended task; an empty working diff is not evidence that `HEAD~1..HEAD` is the right scope.
+4. Announce the source and scope. If the checkout has no HEAD, review the explicit files directly. Ask for the missing target only when context and read-only discovery cannot identify it.
 
 ## Step 2: Gather Context
 
@@ -43,14 +41,14 @@ Collect these items — they become the reviewer's input:
 | **Changed files** | git diff from Step 1 | Yes |
 | **What was implemented** | Recent commits, plan docs, or infer from diff | Yes |
 | **Plan/requirements** | Plan/spec/design docs in the repo (`docs/`, `plans/`, issue links) | No but helpful |
-| **Test results** | `cargo test` / `pytest` / `npm test` output | Yes (run if not available) |
+| **Test results** | Relevant existing output or a scoped test run | For executable changes; state unrun checks and their limits. Documentation-only edits do not require invented tests. |
 | **Language/framework** | Infer from file extensions and imports | Yes (auto-detected) |
 
 ## Step 3: Dispatch Reviewer Agent
 
 Spawn a **new agent** as the reviewer. The reviewer must be independent — it should NOT have context from implementation or prior conversation. This ensures unbiased review.
 
-Use the Agent tool:
+Use the runtime's independent-agent facility (the following is pseudocode). Carry the source, scope, constraints, and required backend/model explicitly; follow the user's or project's model policy. If that backend is unavailable, report a blocked review instead of silently substituting a model.
 
 ```
 Agent(
@@ -72,7 +70,7 @@ Read `code-reviewer.md` (it sits next to this file in the skill directory) for t
 ## 本次审核输入
 
 ### 变更范围
-[git diff stat + file list]
+[source checkout absolute path + branch/HEAD + frozen base/head SHAs OR staged/unstaged diff and explicit new-file list; include task constraints]
 
 ### 实现描述
 [what was implemented — feature description]
@@ -107,10 +105,10 @@ Present the full report to the user as-is.
 Read the gate result from the report:
 
 - **PASS** (all *applicable* dimensions ≥ 7.0 AND final ≥ 7.5 AND no Critical issues; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
-  Tell the user: "Code passes quality gate. Ready to merge/proceed."
+  Report that this review passed for the recorded scope. This does not establish CI, product acceptance, publication authorization, or other required gates.
 
 - **FAIL**:
-  Tell the user: "Code needs improvement. Fix the issues listed above, then run /code-review again."
+  For a review-only request, report the findings and required next action. In an already authorized implementation task, the parent continues the in-scope fix, relevant validation, and independent re-review; do not hand routine fixes back to the user or ask them to repeat the same approval.
   Do NOT allow merge without fixing Critical/Important issues.
   若装了 `repro` skill 且存在可证伪的 Critical finding（正确性/错误处理/数据丢失/输入型安全类），建议先 `/repro` 把它们钉成红灯复现测试再 dispatch 修复——红灯既过滤误报（REFUTED 的 finding 解除 blocking），又是修复的防篡改验收契约。
 
@@ -123,16 +121,16 @@ Read the gate result from the report:
 ## 失败模式与安全边界
 
 dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
-- **不在 git 仓库 / `git diff` 失败**：让用户直接给文件路径或 SHA 范围，不要猜测变更范围。
-- **diff 为空**：没有变更可审，直接告诉用户并停止。
+- **不在 git 仓库 / `git diff` 失败**：先检查任务已知的源码路径和命令错误；文件级 review 不要求 Git。仍无法定位时只询问缺失目标。
+- **diff 为空**：先检查暂存区、任务相关新文件、已给定文件列表和目标 checkout；确无可审内容才报告，不回退到无关 commit。
 - **读不到 `code-reviewer.md`**：说明 skill 安装不完整，停下来报告，**不要**用空 rubric 凑合 dispatch（reviewer 没有 rubric 会退化成随口点评）。
 
-**安全边界**：reviewer 是**只读**的——阅读代码、打分、写报告，**不修改文件、不执行变更、不调用外部服务**。本 skill 也不替用户 merge 或改代码；gate 结论是建议，最终决定权在用户。
+**安全边界**：reviewer 是**只读**的——阅读代码、打分、写报告，**不修改文件、不执行变更、不调用外部服务**。父任务的实现权限由已有授权决定，reviewer 的只读身份不撤销父任务的授权，也不新增权限。记录授权来源、范围和限制，跨 skill、委派或续接时继承；超出范围或触及明确审批门时才请求相应批准。review PASS 不授权 merge。
 
 ## Notes
 
 - Each review is a **fresh agent** — no memory of previous reviews. This prevents bias.
 - If the user disagrees with a finding, they can override the gate. But the default is strict enforcement.
-- When used downstream of the `tdd` skill, the gate controls whether the workflow advances to merge/release.
+- Downstream of `tdd`, report the quality gate at the parent's selected checkpoint. PASS does not replace other checks or authorize merge/release.
 - code-review 和 test-review 互补：test-review 审测试质量，code-review 审实现质量。
 - code-review 和 repro 互补：code-review 产出 finding（意见），repro 用红灯测试验证 finding（证据）。reviewer 保持只读；写测试的是 repro 另行 dispatch 的 agent——分权是有意的，兼职写红灯的 reviewer 会偏向只报好复现的问题。

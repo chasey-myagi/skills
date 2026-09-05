@@ -43,6 +43,8 @@ Review finding 是 LLM 意见；红灯测试是可执行证据。本 skill 把�
 
 每个 finding 派一个独立 agent（findings 互不依赖时可并行）。
 
+使用当前 runtime 的独立 agent 机制；下方是伪代码。携带父任务已有的授权来源、测试写入目录与限制，不因进入本 skill 重复索取同一批准。指定 backend/model 按用户或项目政策传递；不可用时报告阻塞，不自动换模型。
+
 ```
 Agent(
   description: "repro: [finding id]",
@@ -68,8 +70,8 @@ rubric must arrive inline. Repo files are different: pass paths and let the agen
 [id / file:line / category / severity / 声称的行为偏差（预期 X，实际 Y）/ 复现思路]
 
 ### 仓库与测试环境
-[repo 路径；测试框架与运行命令，如 `cargo test` / `npx vitest run` / `node --test`；
-多 worktree 环境务必给隔离 build 指令，如 CARGO_TARGET_DIR=./target]
+[session root 与源码 checkout 的各自绝对路径、源码 branch/HEAD、固定 SHA 范围或当前 diff + 新文件列表、允许新增测试的目录；测试框架与运行命令，如 `cargo test` / `npx vitest run` / `node --test`；
+多 worktree 环境务必给源码目标的测试入口与独立 build 目录绝对路径，如 CARGO_TARGET_DIR=<source>/target；不假设 session cwd 就是源码目录]
 
 ### Spec / 文档
 [spec、设计文档、issue 的路径或内容；没有就写"无——oracle 需从邻近测试/文档注释/标准语义中找"]
@@ -81,18 +83,18 @@ rubric must arrive inline. Repo files are different: pass paths and let the agen
 
 Agent 报告回来后，**你亲自跑，不采信转述**。逐条核对：
 
-- [ ] agent 的改动只含约定目录下的**新增**测试文件（`git status --porcelain` + `git diff` 核查；碰了实现代码 / 既有测试 / runner 配置 → **整轮作废重跑**——越界 agent 的「确认」不可信，它可能已经改变了被测对象）
+- [ ] dispatch 前记录源码 checkout 的 staged/unstaged diff、未跟踪文件清单与受保护文件内容；返回后用 `git -C <source> status --porcelain`、`git -C <source> diff HEAD`（无 HEAD 时比较已保存文件快照）和新文件内容核查增量。agent 的改动只能是约定目录下的**新增**测试。既有用户修改不归到 agent 头上；agent 越界改变实现/既有测试/runner 配置则本轮证据无效，保留现场并报告，不擅自丢弃文件。
 - [ ] CONFIRMED 的红灯：失败类型是**测试体内断言失败**（编译错、超时、setup 崩溃都不算红灯，退回判 BLOCKED）
 - [ ] 失败输出与 finding 声称的行为偏差对得上（核对报告里的 predicted ↔ observed 映射）
 - [ ] 同文件 control test（相同 setup 的合法场景）为绿——排除环境性红灯
 - [ ] 红灯连跑 3 次全红——杀 flaky
 - [ ] 其余 suite 在同环境为绿
 
-多 worktree / 共享 build cache 环境（Rust 尤甚）：验收一律用隔离 target（`CARGO_TARGET_DIR=./target`），否则你验的可能根本不是当前代码。
+多 worktree / 共享 build cache 环境（Rust 尤甚）：验收使用源码目标各自的 build 目录绝对路径（如 `CARGO_TARGET_DIR=<source>/target`）及显式源码入口，否则你验的可能不是目标 checkout 的代码。
 
 ## Step 4: 按判定处理
 
-- **CONFIRMED** → 红灯测试落**独立 commit**（如 `repro: red tests for review round N`）作验收基线，记下 commit sha 和每个测试文件的内容快照。finding 升格为「已证实，附执行证据」。
+- **CONFIRMED** → 在已有 commit 授权内将红灯测试落**独立 commit**作验收基线，记下 SHA 和测试内容快照。本 skill 不新增 commit/push 权限；明确禁止 commit 时用文件清单、内容哈希及源码 HEAD 固定基线，继续允许的验证与修复。finding 升格为「已证实，附执行证据」。
 - **REFUTED** → finding 解除 blocking（视同 withdrawn），反证测试 + 可红性证明输出**留档回写**审查报告。不要替 reviewer 改分——若该 finding 是某维度低分的主因，带证据重新 dispatch review round 2，让 reviewer 自己修正。分数是 reviewer 的判断产物，你只有转发权。
 - **NOT-TESTABLE** → finding **保持原 severity**（不可测 ≠ 不成立），Critical 依旧 blocking，交人裁决。
 - **BLOCKED** → 环境问题，修好重试；suite 本身跑不动时所有 finding 判 BLOCKED 并停止。
@@ -102,7 +104,9 @@ Agent 报告回来后，**你亲自跑，不采信转述**。逐条核对：
 CONFIRMED 的红灯就是修复的验收契约。fix dispatch prompt 里 hardcode 硬约束（不靠自觉）：
 
 ```
-修复以下已证实的 finding，使这些红灯测试通过：<test paths>（红灯基线 commit: <sha>）。
+修复以下已证实的 finding，使这些红灯测试通过：<absolute test paths>。
+源码 checkout: <absolute source path>；红灯基线: <commit SHA，或源码 HEAD + 文件哈希清单>。
+已有授权来源与范围: <可核查记录>；commit/push 等限制: <继承父任务约定>。
 禁止：
 - 修改 tests/repro/** 或任何既有测试文件
 - 修改 test runner / CI / build 配置（含 skip list、测试路径过滤）
@@ -112,7 +116,7 @@ CONFIRMED 的红灯就是修复的验收契约。fix dispatch prompt 里 hardcod
 
 修复完成后，你机械验收五条（全是命令级检查，不是判断题）：
 
-1. `git diff <repro-commit>..HEAD -- <repro 测试路径> <既有测试路径>` 为**空**
+1. 比较红灯基线和**实际修复状态**：已提交用固定 SHA 范围，尚未提交还必须包含 staged/unstaged 与新文件；确认受保护测试内容未变。不能只看 `<repro-commit>..HEAD` 就漏过工作区修改。未获 commit 授权时用已保存内容哈希核验。
 2. 每个红灯测试单独运行**变绿**
 3. 全量 suite 绿，且 pass 列表 ⊇ 修复前基线（防删/skip 其他测试凑全绿）
 4. fix diff 的文件名不含 runner / CI / build 配置
@@ -134,7 +138,7 @@ dispatch 之前先处理这些边界：
 
 - **没有可测 finding**：全部走人审，如实告知——不要为了产出硬凑测试。
 - **finding 缺「预期 X 实际 Y」**：让来源方补具体行为偏差，不要替它脑补。
-- **agent 越界改了非测试文件**：整轮作废重跑，不要「顺手保留」它的改动。
+- **agent 越界改了非测试文件**：本轮证据作废，保留现场并报告实际增量；不把越界改动纳入修复，也不擅自 restore、删除或丢弃文件。先按父任务已有授权处理现场，再用正确基线复现。
 - **suite 无法运行**：全部判 BLOCKED 并停止，先修环境。
 - **单轮 NOT-TESTABLE 超过送审 finding 的半数**：停下来向用户说明——大概率是路由出了问题（不可证伪类混进了队列），不是继续标。
 - **读不到 `repro-agent.md`**：skill 安装不完整，停下报告，不要用空 rubric 凑合 dispatch。
