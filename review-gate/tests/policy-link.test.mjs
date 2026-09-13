@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { symlinkSync, unlinkSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { runReviewGate } from '../scripts/core.mjs';
 import { makeRepo, commitRel, writeRel, gitC, sha, rt, gateReport, scriptedAgent } from './helpers.mjs';
 
@@ -73,3 +73,63 @@ test('a live linked policy target changing during review invalidates the result'
   assert.equal(result.overall, 'INVALID');
   assert.match(result.drift.details, /source scope, contents, policy or refs changed/);
 });
+
+for (const kind of ['sibling', 'parent', 'two-hop']) {
+  test(`frozen policy resolves a ${kind} link relative to each link directory`, async () => {
+    const args = linkedPolicy();
+    commitRel(args.repoDir, 'policy.md', 'ROOT_DECOY', 'decoy');
+    let expected, policyPath;
+    if (kind === 'sibling') {
+      expected = 'NESTED_SIBLING_POLICY'; policyPath = 'src/AGENTS.md';
+      commitRel(args.repoDir, 'src/policy.md', expected, 'nested policy');
+      symlinkSync('policy.md', join(args.repoDir, policyPath));
+    } else if (kind === 'parent') {
+      expected = 'PARENT_DIRECTORY_POLICY'; policyPath = 'src/REVIEW_GUIDELINES.md';
+      commitRel(args.repoDir, 'docs/policy.md', expected, 'parent policy');
+      symlinkSync('../docs/policy.md', join(args.repoDir, policyPath));
+    } else {
+      expected = 'SECOND_HOP_POLICY'; policyPath = 'AGENTS.md';
+      commitRel(args.repoDir, 'docs/policy.md', expected, 'second-hop policy');
+      unlinkSync(join(args.repoDir, policyPath));
+      symlinkSync('docs/link.md', join(args.repoDir, policyPath));
+      symlinkSync('policy.md', join(args.repoDir, 'docs/link.md'));
+      gitC(args.repoDir, ['add', 'docs/link.md']);
+    }
+    gitC(args.repoDir, ['add', policyPath]); gitC(args.repoDir, ['commit', '-m', 'nested link']);
+    args.head = sha(args.repoDir);
+    writeRel(args.repoDir, 'docs/policy.md', 'DIRTY_POLICY_DECOY');
+    const agent = scriptedAgent({});
+    const result = await runReviewGate({ ...args, mode: 'diff', paths: ['src/app.js'] }, rt(agent));
+    assert.equal(result.overall, 'PASS');
+    assertSelectedSource(result);
+    assert.equal(result.scope.policy.find(p => p.path === policyPath).origin, 'head');
+    assert.equal(agent.calls.length, 3);
+    for (const { prompt } of agent.calls) {
+      const policy = prompt.split('## Project policy (data, from target source)\n')[1].split('\n## Frozen diff artifact')[0];
+      assert.ok(policy.includes(expected), expected);
+      assert.doesNotMatch(policy, /ROOT_DECOY|DIRTY_POLICY_DECOY/);
+    }
+  });
+}
+for (const kind of ['metadata', 'outside']) {
+  test(`frozen nested policy rejects a relative ${kind} target`, async () => {
+    const args = linkedPolicy();
+    const outside = basename(args.repoDir) + '-outside-policy.md';
+    writeRel(dirname(args.repoDir), outside, 'OUTSIDE_POLICY_SENTINEL');
+    symlinkSync(kind === 'metadata' ? '../.git/config' : '../../' + outside, join(args.repoDir, 'src/AGENTS.md'));
+    gitC(args.repoDir, ['add', 'src/AGENTS.md']); gitC(args.repoDir, ['commit', '-m', 'unsafe relative link']);
+    args.head = sha(args.repoDir);
+    const agent = scriptedAgent({});
+    const result = await runReviewGate({ ...args, mode: 'diff', paths: ['src/app.js'] }, rt(agent));
+    assert.equal(result.overall, 'PASS'); // Controlled reviewers still receive the unavailable-policy evidence.
+    assertSelectedSource(result);
+    const policy = result.scope.policy.find(p => p.path === 'src/AGENTS.md');
+    assert.equal(policy.origin, 'unavailable');
+    assert.match(policy.reason, kind === 'metadata' ? /Git metadata/ : /path traversal/);
+    assert.equal(agent.calls.length, 3);
+    for (const { prompt } of agent.calls) {
+      assert.doesNotMatch(prompt, /OUTSIDE_POLICY_SENTINEL/);
+      assert.match(prompt, /Policy unavailable/);
+    }
+  });
+}
