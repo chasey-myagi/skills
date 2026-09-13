@@ -287,7 +287,7 @@ export async function runReviewGate(rawArgs, runtime = {}) {
       snapshotDir,
       manifestPath,
       manifestHash: captured.manifestHash,
-      policy: captured.policy.map(({ path, origin }) => ({ path, origin })),
+      policy: captured.policy.map(({ path, origin, reason }) => ({ path, origin, ...(reason ? { reason } : {}) })),
     };
     result.artifacts.snapshotDir = snapshotDir;
     result.artifacts.manifestPath = manifestPath;

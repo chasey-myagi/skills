@@ -8,7 +8,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep, relative, posix } from "node:path";
 import { sha256 } from "./schema.mjs";
 
 const POLICY_NAMES = ["AGENTS.md", "REVIEW_GUIDELINES.md"];
@@ -181,6 +181,54 @@ function collectPolicy(repo, changed, read) {
   return policy;
 }
 
+function readPolicyRecord(repo, mode, head, rel) {
+  let found = false;
+  try {
+    let bytes;
+    const resolution = [rel];
+    if (mode === "diff") {
+      let current = rel;
+      for (;;) {
+        const entry = git(repo, ["--literal-pathspecs", "ls-tree", "-z", head, "--", current]).stdout.toString();
+        if (!entry) {
+          if (!found) return null;
+          throw new CaptureError(`linked policy target missing: ${current}`);
+        }
+        found = true;
+        const [fileMode, type] = entry.slice(0, entry.indexOf("\t")).split(" ");
+        if (type !== "blob") throw new CaptureError(`policy is not a file: ${current}`);
+        bytes = git(repo, ["cat-file", "blob", `${head}:${current}`]).stdout;
+        if (fileMode !== "120000") break;
+        const target = bytes.toString();
+        if (!target || target.startsWith("/") || /^[a-zA-Z]:/.test(target) || target.includes("\\") || target.includes("\0")) {
+          throw new CaptureError(`policy link must be repository-relative: ${current}`);
+        }
+        current = assertRelPath(posix.normalize(posix.join(posix.dirname(current), target)));
+        if (resolution.includes(current) || resolution.length >= 40) throw new CaptureError("policy link cycle or depth limit");
+        resolution.push(current);
+      }
+    } else {
+      const abs = resolve(repo, rel);
+      lstatSync(abs);
+      found = true;
+      const target = realpathSync(abs);
+      if (!pathInsideRepo(repo, target)) throw new CaptureError(`policy link escapes source: ${rel}`);
+      const targetRel = assertRelPath(relative(realpathSync(repo), target));
+      if (targetRel !== rel) resolution.push(targetRel);
+      if (!lstatSync(target).isFile()) throw new CaptureError(`policy is not a file: ${rel}`);
+      bytes = readFileSync(target);
+    }
+    const rec = fileRecord(rel, bytes, "policy");
+    const hash = resolution.length > 1 ? sha256(JSON.stringify({ resolution, contentHash: rec.hash })) : rec.hash;
+    return { origin: mode === "diff" ? "head" : mode === "snapshot" ? "snapshot" : "worktree", hash, text: rec.text, binary: rec.binary };
+  } catch (err) {
+    if (!found && ["ENOENT", "ENOTDIR"].includes(err.code)) return null;
+    const reason = err.message;
+    const text = `Policy unavailable: ${reason}. Account for missing required policy evidence in your assessment.`;
+    return { origin: "unavailable", reason, hash: sha256(text), text, binary: false };
+  }
+}
+
 function walkDir(repo, rel, out) {
   const { abs } = resolveInRepo(repo, rel || ".", { mustExist: true });
   const st = lstatSync(abs);
@@ -284,23 +332,7 @@ export function captureTarget(args, repo) {
 
   if (!files.length) throw new CaptureError("empty target: no files to review");
 
-  const readPolicy = (rel) => {
-    if (mode === "diff") {
-      const buf = blobAt(repo, headSha, rel);
-      if (!buf) return null;
-      const rec = fileRecord(rel, buf, "policy");
-      return { origin: "head", hash: rec.hash, text: rec.text, binary: rec.binary };
-    }
-    try {
-      const { abs } = resolveInRepo(repo, rel, { mustExist: true, follow: false });
-      const rec = fileRecord(rel, readFileSync(abs), "policy");
-      return { origin: mode === "snapshot" ? "snapshot" : "worktree", hash: rec.hash, text: rec.text, binary: rec.binary };
-    } catch (err) {
-      if (!existsSync(resolve(repo, rel)) && /path not found/.test(err.message)) return null;
-      throw err;
-    }
-  };
-  const policy = collectPolicy(repo, files.map((f) => f.path), readPolicy);
+  const policy = collectPolicy(repo, files.map((f) => f.path), rel => readPolicyRecord(repo, mode, headSha, rel));
 
   const manifest = {
     mode,
@@ -309,7 +341,7 @@ export function captureTarget(args, repo) {
     headSha,
     mergeBase,
     files: files.map(({ path, hash, status, indexHash }) => ({ path, hash, status, ...(indexHash ? { indexHash } : {}) })),
-    policy: policy.map(({ path, hash, origin }) => ({ path, hash, origin })),
+    policy: policy.map(({ path, hash, origin, reason }) => ({ path, hash, origin, ...(reason ? { reason } : {}) })),
   };
   manifest.manifestHash = sha256(JSON.stringify(manifest));
   return { ...manifest, fileContents: files, policyContents: policy, baseRef: args.base || null, headRef: args.head || null, pathFilter: filter };
