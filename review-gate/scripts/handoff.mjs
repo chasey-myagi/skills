@@ -73,7 +73,7 @@ export function renderHandoff(result) {
   sections.push(lines((result.fixQueue || []).map((f) => `${f.id} ${f.title}`)));
 
   sections.push("## Pending human decisions");
-  sections.push(lines((result.pendingHumanDecisions || []).map((p) => `${p.id || ""} ${p.reason} ${p.title || ""}`.trim())));
+  sections.push(lines((result.pendingHumanDecisions || []).map((p) => `${p.id || p.gate || ""} ${p.reason} ${p.title || ""}`.trim())));
 
   sections.push("## Unrun checks");
   sections.push(lines(result.unrunChecks || []));

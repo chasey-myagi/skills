@@ -30,7 +30,7 @@ After accepted refutation, retain the original report and attach the accepted ev
 
 ## Handoff
 
-The saved structured result is the source for the handoff. Preserve the scope, original reports, finding IDs and source gates, priority and blocking decisions, evidence locations, candidate proof status, constraints and unrun checks. Separate actionable fixes, optional improvements, informational callouts and matters requiring human judgment.
+The saved structured result is the source for the handoff. Preserve the scope, original reports, finding IDs and source gates, priority and blocking decisions, evidence locations, candidate proof status, constraints and unrun checks. Separate actionable fixes, optional improvements, informational callouts and matters requiring human judgment. Lack of a repro harness does not make an ordinary test gap or structural fix require user approval. Invalid gate reports are retained for correction/rerun and cannot dispatch write-capable verification.
 
 An authorized implementation task continues from that handoff without asking for the same permission again. A review-only task does not become an implementation task because a fix queue exists. CI, acceptance, review and permission to publish retain their own outcomes.
 
@@ -41,7 +41,10 @@ Use these scenarios when changing the composition. Controlled responses can test
 | Given / when | Observable outcome |
 |---|---|
 | Committed review while the checkout has extra edits | Evidence uses the frozen head and does not silently include the edits |
-| Task files include staged, unstaged and new files | Working-tree scope includes each selected file, including paths with spaces |
+| Task files include staged, unstaged and new files, including partial staging | Working-tree scope preserves HEAD, index and working bytes, including paths with spaces |
+| A selected change renames a file | Both rename paths remain in the frozen delta; unchanged lines do not become additions |
+| Snapshot directory contains ignored dependencies or credentials | They are excluded unless an ignored file was explicitly named |
+| Source file or diff exceeds the prompt budget | Complete bytes remain in artifacts and the prompt points to them |
 | Snapshot includes a previously committed bug | The reviewer may report it without pretending it is newly introduced |
 | All gates return only human callouts | Callouts are preserved; no bug or fix task is invented |
 | Linus or test-review finds a behavior bug | It can reach repro under the same rules as code-review |

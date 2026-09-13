@@ -192,18 +192,26 @@ export function captureTarget(args, repo) {
     baseSha = resolveCommit(repo, args.base);
     headSha = resolveCommit(repo, args.head);
     mergeBase = git(repo, ["merge-base", baseSha, headSha], { encoding: "utf8" }).stdout.trim();
-    const names = splitZ(git(repo, ["diff", "-z", "--name-only", mergeBase, headSha]).stdout);
-    const selected = intersect(names.map(assertRelPath), filter);
-    for (const path of selected.sort()) {
-      const buf = blobAt(repo, headSha, path);
-      files.push(fileRecord(path, buf, buf ? "modified" : "deleted"));
+    const entries = splitZ(git(repo, ["diff", "--name-status", "-M", "-z", mergeBase, headSha]).stdout);
+    const selected = new Map();
+    for (let i = 0; i < entries.length;) {
+      const status = entries[i++];
+      const first = assertRelPath(entries[i++]);
+      const pair = status.startsWith("R") ? [first, assertRelPath(entries[i++])] : [first];
+      // Keep both sides of a selected rename so pathspec filtering preserves its delta.
+      if (!intersect(pair, filter).length) continue;
+      for (const name of pair) selected.set(name, status.startsWith("R") ? "renamed" :
+        ({ A: "added", D: "deleted", M: "modified", T: "type-changed" }[status] || status));
+    }
+    for (const [path, status] of [...selected].sort(([a], [b]) => a.localeCompare(b))) {
+      files.push(fileRecord(path, blobAt(repo, headSha, path), status));
     }
   } else if (mode === "working-tree") {
     const current = git(repo, ["rev-parse", "--verify", "HEAD"], { encoding: "utf8", allowFail: true });
     headSha = current.status === 0 ? current.stdout.trim() : null;
     baseSha = headSha;
-    const staged = splitZ(git(repo, ["diff", "-z", "--name-only", "--cached"]).stdout).map(assertRelPath);
-    const unstaged = splitZ(git(repo, ["diff", "-z", "--name-only"]).stdout).map(assertRelPath);
+    const staged = splitZ(git(repo, ["diff", "--no-renames", "-z", "--name-only", "--cached"]).stdout).map(assertRelPath);
+    const unstaged = splitZ(git(repo, ["diff", "--no-renames", "-z", "--name-only"]).stdout).map(assertRelPath);
     const untracked = splitZ(git(repo, ["ls-files", "-z", "--others", "--exclude-standard"]).stdout).map(assertRelPath);
     const stagedOnly = new Set(staged.filter((p) => !unstaged.includes(p) && !untracked.includes(p)));
     const all = [...new Set([...staged, ...unstaged, ...untracked])];
@@ -226,6 +234,9 @@ export function captureTarget(args, repo) {
       }
       const record = fileRecord(path, buf, status);
       record.baseBytes = headSha ? blobAt(repo, headSha, path) : null;
+      record.indexBytes = indexBlob(repo, path);
+      record.indexHash = record.indexBytes === null ? "deleted" : sha256(record.indexBytes);
+      record.status = buf === null ? "deleted" : record.baseBytes === null ? "added" : "modified";
       files.push(record);
     }
   } else if (mode === "snapshot") {
@@ -235,7 +246,15 @@ export function captureTarget(args, repo) {
       const { abs, rel } = resolveInRepo(repo, p, { mustExist: true, follow: true });
       const st = lstatSync(abs);
       const realSt = st.isSymbolicLink() ? lstatSync(realpathSync(abs)) : st;
-      if (realSt.isDirectory()) walkDir(repo, rel, expanded);
+      if (realSt.isDirectory()) {
+        // Directory scope follows Git's tracked + non-ignored working files.
+        // An explicitly named ignored file remains an intentional opt-in.
+        const names = splitZ(git(repo, ["--literal-pathspecs", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", rel]).stdout);
+        for (const name of names) {
+          const checked = resolveInRepo(repo, name, { follow: false });
+          if (existsSync(checked.abs) && lstatSync(checked.abs).isFile()) expanded.push(checked.rel);
+        }
+      }
       else expanded.push(rel);
     }
     const selected = [...new Set(expanded)].sort();
@@ -274,7 +293,7 @@ export function captureTarget(args, repo) {
     baseSha,
     headSha,
     mergeBase,
-    files: files.map(({ path, hash, status }) => ({ path, hash, status })),
+    files: files.map(({ path, hash, status, indexHash }) => ({ path, hash, status, ...(indexHash ? { indexHash } : {}) })),
     policy: policy.map(({ path, hash, origin }) => ({ path, hash, origin })),
   };
   manifest.manifestHash = sha256(JSON.stringify(manifest));
@@ -285,6 +304,14 @@ export function writeSnapshot(runDir, captured) {
   const snap = join(runDir, "snapshot");
   mkdirSync(snap, { recursive: true });
   for (const f of captured.fileContents) {
+    if (captured.mode === "working-tree") {
+      for (const [dir, bytes] of [["snapshot-base", f.baseBytes], ["snapshot-index", f.indexBytes]]) {
+        if (bytes === null) continue;
+        const file = join(runDir, dir, f.path);
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, bytes);
+      }
+    }
     if (f.bytes == null) continue;
     const dest = join(snap, f.path);
     mkdirSync(dirname(dest), { recursive: true });
@@ -309,22 +336,30 @@ export function writeSnapshot(runDir, captured) {
 export function detectDrift(args, repo, captured, snapshotDir) {
   const details = [];
   try {
-    const again = captureTarget(args, repo);
+    const frozenArgs = captured.mode === "diff" ? { ...args, base: captured.baseSha, head: captured.headSha } : args;
+    const again = captureTarget(frozenArgs, repo);
     if (again.manifestHash !== captured.manifestHash) details.push("source scope, contents, policy or refs changed");
   } catch (err) {
     details.push(`source no longer readable at captured scope: ${err.message}`);
   }
-  const expected = captured.fileContents.filter(f => f.bytes !== null);
+  const sets = [[snapshotDir, captured.fileContents.filter(f => f.bytes !== null)]];
+  if (captured.mode === "working-tree") {
+    for (const [dir, field] of [["snapshot-base", "baseBytes"], ["snapshot-index", "indexBytes"]]) {
+      sets.push([join(dirname(snapshotDir), dir), captured.fileContents.filter(f => f[field] !== null).map(f => ({ path: f.path, hash: sha256(f[field]) }))]);
+    }
+  }
+  for (const [root, expected] of sets) {
   try {
     const actual = [];
-    walkDir(snapshotDir, ".", actual);
+    if (existsSync(root)) walkDir(root, ".", actual);
     if (JSON.stringify(actual.sort()) !== JSON.stringify(expected.map(f => f.path).sort())) details.push("snapshot file set changed");
     for (const f of expected) {
-      const { abs } = resolveInRepo(snapshotDir, f.path, { mustExist: true, follow: false });
+      const { abs } = resolveInRepo(root, f.path, { mustExist: true, follow: false });
       if (sha256(readFileSync(abs)) !== f.hash) details.push(`snapshot hash changed ${f.path}`);
     }
   } catch (err) {
     details.push(`snapshot integrity failure: ${err.message}`);
+  }
   }
   return { detected: details.length > 0, details: details.length ? details.join("; ") : null };
 }
@@ -332,14 +367,27 @@ export function detectDrift(args, repo, captured, snapshotDir) {
 export function unifiedDiff(repo, captured) {
   const paths = captured.files.map(f => f.path);
   if (captured.mode === "diff") {
-    return git(repo, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", captured.mergeBase, captured.headSha, "--", ...paths], { encoding: "utf8" }).stdout;
+    return git(repo, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "-M", captured.mergeBase, captured.headSha, "--", ...paths], { encoding: "utf8" }).stdout;
   }
   if (captured.mode === "working-tree") {
     // Both sides are captured bytes, including staged/new/deleted files; never diff the moving checkout.
     return captured.fileContents.map(f => {
       const before = asText(f.baseBytes);
-      return `### ${JSON.stringify(f.path)}\nBASE (${f.baseBytes === null ? "absent" : captured.headSha}):\n${before?.binary ? "(binary)" : before?.text ?? "(absent)"}\nWORKING SNAPSHOT:\n${f.binary ? "(binary)" : f.text ?? "(deleted)"}`;
+      const index = asText(f.indexBytes);
+      return `### ${JSON.stringify(f.path)}\nBASE (${f.baseBytes === null ? "absent" : captured.headSha}):\n${before?.binary ? "(binary)" : before?.text ?? "(absent)"}\nINDEX SNAPSHOT:\n${index?.binary ? "(binary)" : index?.text ?? "(absent)"}\nWORKING SNAPSHOT:\n${f.binary ? "(binary)" : f.text ?? "(deleted)"}`;
     }).join("\n\n");
   }
   return "Snapshot review: current files only; no delta attribution.";
+}
+
+// Observe source checkout deltas without attributing concurrent user edits to an agent.
+export function checkoutFingerprint(repo) {
+  const parts = [git(repo, ["rev-parse", "HEAD"]).stdout,
+    git(repo, ["diff", "--no-ext-diff", "--no-textconv", "--binary"]).stdout,
+    git(repo, ["diff", "--no-ext-diff", "--no-textconv", "--binary", "--cached"]).stdout];
+  for (const rel of splitZ(git(repo, ["ls-files", "-z", "--others", "--exclude-standard"]).stdout).sort()) {
+    const { abs } = resolveInRepo(repo, rel, { follow: false });
+    parts.push(Buffer.from(rel + "\0"), readFileSync(abs));
+  }
+  return sha256(Buffer.concat(parts));
 }

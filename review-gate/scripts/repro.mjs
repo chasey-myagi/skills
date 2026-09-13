@@ -1,9 +1,14 @@
 import { mkdirSync, readFileSync, lstatSync } from "node:fs";
 import { join } from "node:path";
-import { isRoutable, nonempty, sha256, HUMAN_DECISION, REPRO_SCHEMA, validateSchema } from "./schema.mjs";
+import { isRoutable, nonempty, sha256, REPRO_SCHEMA, validateSchema } from "./schema.mjs";
 import { git, resolveCommit, resolveInRepo } from "./source.mjs";
 
 function splitZ(bytes) { return bytes.toString().split("\0").filter(Boolean); }
+
+function isNewTestPath(path) {
+  return path.startsWith("tests/repro/") || /^tests\/repro_[^/]+\.rs$/.test(path)
+    || /(^|\/)repro_[^/]+_test\.go$/.test(path);
+}
 
 export function inspectIntegrity(worktree, buildDir, head) {
   const base = head || resolveCommit(worktree, "HEAD");
@@ -15,7 +20,7 @@ export function inspectIntegrity(worktree, buildDir, head) {
   const ignored = splitZ(git(worktree, ["ls-files", "--others", "-i", "-z", "--exclude-standard"]).stdout);
   const newTests = [];
   for (const path of new Set([...changed, ...fresh, ...ignored])) {
-    if (existing.has(path) || !path.startsWith("tests/repro/")) {
+    if (existing.has(path) || !isNewTestPath(path)) {
       tamper.push(`source change ${path}`);
       continue;
     }
@@ -76,22 +81,14 @@ export function createWorktree(repo, runDir, findingId, headSha) {
   return { worktree, buildDir };
 }
 
-export function routeFindings(aggregated, { reproCap, benchmarkHarness, enabled, compatibleDiff }) {
-  const pendingHumanDecisions = [];
+export function routeFindings(aggregated, { reproCap, benchmarkHarness }) {
   const queue = [];
   const skipped = [];
   for (const f of aggregated) {
     if (!f.blocking) continue;
-    if (HUMAN_DECISION.has(f.category) || !isRoutable(f, { benchmarkHarness })) {
-      const why = HUMAN_DECISION.has(f.category)
-        ? `human-decision:${f.category}`
-        : !nonempty(f.trigger) || !nonempty(f.expected) || !nonempty(f.actual) || !nonempty(f.evidence)
-          ? "missing behavioral fields"
-          : f.category === "performance"
-            ? "performance without benchmarkHarness"
-            : "not falsifiable";
-      pendingHumanDecisions.push({ id: f.id, reason: why, title: f.title });
-      skipped.push({ id: f.id, why, officialStatus: "unresolved" });
+    if (!isRoutable(f, { benchmarkHarness })) {
+      const why = f.category === "performance" ? "performance without benchmarkHarness" : `not a reproducible behavioral claim: ${f.category}`;
+      skipped.push({ id: f.id, sources: f.sources, why, officialStatus: "blocking" });
       continue;
     }
     queue.push(f);
@@ -100,6 +97,7 @@ export function routeFindings(aggregated, { reproCap, benchmarkHarness, enabled,
   const taken = queue.slice(0, cap);
   const over = queue.slice(cap).map((f) => ({
     id: f.id,
+    sources: f.sources,
     claimed: null,
     accepted: false,
     officialStatus: "unresolved",
@@ -109,7 +107,7 @@ export function routeFindings(aggregated, { reproCap, benchmarkHarness, enabled,
     buildDir: null,
     testFiles: [],
   }));
-  return { taken, over, skipped, pendingHumanDecisions, enabled, compatibleDiff };
+  return { taken, over, skipped };
 }
 
 export function parentReproPath() {

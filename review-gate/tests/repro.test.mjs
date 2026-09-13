@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   makeRepo,
@@ -20,6 +20,7 @@ import {
   parseBuildDir,
   parseFindingId,
 } from "./helpers.mjs";
+import { proofValidity, inspectIntegrity } from "../scripts/repro.mjs";
 
 const REPRO_SRC = "test('red', () => { throw new Error('red') })\n";
 
@@ -176,7 +177,9 @@ test("architecture / test-gap without behavior fields are not routed", async () 
   )));
   assert.equal(reproCalls, 0);
   assert.equal(result.verification.ran, false);
-  assert.ok(result.pendingHumanDecisions.length >= 1);
+  assert.equal(result.pendingHumanDecisions.length, 0);
+  assert.equal(result.fixQueue.length, 2);
+  assert.deepEqual(result.fixQueue.flatMap(f => f.sources.map(s => s.id)).sort(), ["A1", "G1"]);
   assert.equal(result.passed, false);
 });
 
@@ -237,40 +240,6 @@ test("candidate REFUTED does not authorize official PASS", async () => {
   assert.equal(existsSync(wt), true);
 });
 
-test("empty run objects are not valid REFUTED proof", async () => {
-  const core = await loadCore();
-  const { repo, base, head } = await setupDiff();
-  const result = await core.runReviewGate({
-    repoDir: repo, mode: "diff", base, head, repro: true, runDir: freshRunDir(),
-  }, runtime(reviewAgent(
-    { "code-review": [finding()] },
-    async (prompt) => {
-      const id = parseFindingId(prompt);
-      const wt = parseWorktree(prompt);
-      writeReproTest(wt, "x");
-      return {
-        id,
-        verdict: "REFUTED",
-        summary: "nope",
-        oracle: { source: "x", statement: "y" },
-        evidence: {
-          testPath: "tests/repro/repro.test.js",
-          testContent: "x",
-          commands: [],
-          redRuns: [{}],
-          controlRuns: [{}],
-          redabilityProof: { flippedRed: {}, restoredGreen: {} },
-        },
-      };
-    },
-  )));
-  const v = result.verification.findings[0];
-  assert.equal(v.claimed, "REFUTED");
-  assert.equal(v.proof.valid, false);
-  assert.equal(v.acceptance, "rejected-invalid-proof");
-  assert.equal(result.passed, false);
-});
-
 test("tampered repro source invalidates proof; worktree is kept", async () => {
   const core = await loadCore();
   const { repo, base, head } = await setupDiff();
@@ -281,18 +250,15 @@ test("tampered repro source invalidates proof; worktree is kept", async () => {
     async (prompt) => {
       const id = parseFindingId(prompt);
       const wt = parseWorktree(prompt);
-      writeReproTest(wt);
+      const claim = completePacket(wt, id, "REFUTED");
+      assert.equal(proofValidity(claim, wt, id, [claim.evidence.testPath]).valid, true);
       writeFileSync(join(wt, "src/app.js"), "TAMPER\n");
-      return reproClaim(id, "REFUTED", {
-        redabilityProof: {
-          flippedRed: { output: "red", exitCode: 1 },
-          restoredGreen: { output: "green", exitCode: 0 },
-        },
-      });
+      return claim;
     },
   )));
   const v = result.verification.findings[0];
   assert.equal(v.proof.valid, false);
+  assert.deepEqual(v.proof.reasons, ["tamper: source change src/app.js"]);
   assert.equal(v.acceptance, "rejected-invalid-proof");
   assert.equal(existsSync(v.worktree), true);
   assert.equal(result.passed, false);
@@ -346,10 +312,12 @@ test("working-tree skips repro instead of verifying a different HEAD", async () 
   assert.equal(result.passed, false);
 });
 
-for (const kind of ['wrong-id', 'missing-hash', 'green-as-red', 'source-build', 'committed-source']) {
+for (const kind of ['wrong-id', 'missing-hash', 'green-as-red', 'source-build', 'committed-source', 'committed-test', 'ignored-file']) {
   test(`candidate proof rejects ${kind}`, async () => {
     const core = await loadCore();
-    const { repo, base, head } = await setupDiff();
+    const { repo, base } = await setupDiff();
+    commitRel(repo, ".gitignore", "cache/\n", "ignore cache");
+    const head = sha(repo);
     const result = await core.runReviewGate({ repoDir: repo, mode: "diff", base, head, repro: true }, runtime(reviewAgent(
       { "code-review": [finding()] },
       async (prompt) => {
@@ -359,6 +327,11 @@ for (const kind of ['wrong-id', 'missing-hash', 'green-as-red', 'source-build', 
         if (kind === 'wrong-id') packet.id = 'another-finding';
         if (kind === 'missing-hash') delete packet.evidence.testHash;
         if (kind === 'green-as-red') packet.evidence.redRuns = packet.evidence.redRuns.map(run => ({ ...run, exitCode: 0 }));
+        if (kind === 'ignored-file') writeRel(wt, 'cache/injected.js', 'ignored behavior change');
+        if (kind === 'committed-test') {
+          gitC(wt, ['add', '--', packet.evidence.testPath]);
+          gitC(wt, ['commit', '-m', 'forbidden test commit']);
+        }
         if (kind === 'source-build') writeRel(wt, 'build/implementation.js', 'unapproved source');
         if (kind === 'committed-source') {
           writeRel(wt, 'src/app.js', 'committed tamper');
@@ -374,5 +347,132 @@ for (const kind of ['wrong-id', 'missing-hash', 'green-as-red', 'source-build', 
     assert.equal(packet.acceptance, 'rejected-invalid-proof');
     assert.equal(result.passed, false);
     assert.ok(packet.raw, 'original claim survives rejection');
+    const reasons = { 'wrong-id': /claim ID/, 'missing-hash': /testHash/,
+      'green-as-red': /three failing assertion runs/, 'source-build': /source change build/,
+      'committed-source': /source change src/, 'committed-test': /HEAD changed/,
+      'ignored-file': /source change cache/ };
+    assert.match(packet.proof.reasons.join('\n'), reasons[kind]);
   });
 }
+
+const evidenceMutations = [
+  ["REFUTED", "redability", p => delete p.evidence.redabilityProof, /red then restored-green/],
+  ["REFUTED", "scope", p => delete p.scope, /explicit scenario boundary/],
+  ["REFUTED", "green runs", p => delete p.evidence.greenRuns, /passing behavior test/],
+  ["CONFIRMED", "third red run", p => p.evidence.redRuns.pop(), /three failing assertion runs/],
+  ["CONFIRMED", "control", p => delete p.evidence.controlRuns, /successful controls/],
+  ...["predicted", "observed", "assertionMapping"].map(key => ["CONFIRMED", key, p => delete p[key], /predicted\/observed assertion mapping/]),
+  ["CONFIRMED", "oracle", p => delete p.oracle, /independent oracle/],
+  ["CONFIRMED", "test content", p => p.evidence.testContent += "tamper", /testContent must match/],
+  ["CONFIRMED", "commands", p => p.evidence.commands = [], /command execution records/],
+];
+for (const [verdict, label, mutate, reason] of evidenceMutations) {
+  test(`proof rejects only missing or mismatched ${label}`, () => {
+    const wt = makeRepo();
+    const packet = completePacket(wt, "F1", verdict);
+    const tests = [packet.evidence.testPath];
+    assert.equal(proofValidity(packet, wt, "F1", tests).valid, true);
+    mutate(packet);
+    const result = proofValidity(packet, wt, "F1", tests);
+    assert.equal(result.valid, false);
+    assert.match(result.reasons.join("\n"), reason);
+  });
+}
+test("a declared existing test cannot qualify as new evidence", () => {
+  const wt = makeRepo();
+  const packet = completePacket(wt, "F1", "CONFIRMED");
+  const result = proofValidity(packet, wt, "F1", []);
+  assert.match(result.reasons.join("\n"), /declared test must be a newly created test file/);
+});
+
+for (const outcome of ["null", "throw", "BLOCKED", "NOT_TESTABLE", "setup-failure"]) {
+  test(`repro ${outcome} preserves unresolved source claim and execution evidence`, async () => {
+    const core = await loadCore();
+    const { repo, base, head } = await setupDiff();
+    const runDir = freshRunDir();
+    const inner = reviewAgent({ "code-review": [finding()] }, async prompt => {
+      if (outcome === "null") return null;
+      if (outcome === "throw") throw new Error("backend unavailable");
+      return { id: parseFindingId(prompt), verdict: outcome, summary: "required harness unavailable" };
+    });
+    let reproCalls = 0;
+    const result = await core.runReviewGate({ repoDir: repo, mode: "diff", base, head, repro: true, runDir }, runtime(async (prompt, opts) => {
+      if (outcome === "setup-failure" && !opts.label.startsWith("repro:")) writeFileSync(join(runDir, "worktrees"), "cannot create worktree here");
+      if (opts.label.startsWith("repro:")) reproCalls++;
+      return inner(prompt, opts);
+    }));
+    const v = result.verification.findings[0];
+    assert.equal(reproCalls, outcome === "setup-failure" ? 0 : 1);
+    assert.equal(v.accepted, false);
+    assert.equal(v.officialStatus, "blocking");
+    assert.equal(v.acceptance, outcome === "NOT_TESTABLE" ? "not-testable" : "blocked");
+    assert.deepEqual(v.sources, [{ gate: "code-review", id: "C1" }]);
+    assert.ok(result.unrunChecks.some(x => x.includes(v.id)));
+    assert.equal(result.overall, "FAIL");
+    assert.equal(result.fixQueue.length, 1);
+    const stored = JSON.parse(readFileSync(result.artifacts.resultJson));
+    assert.deepEqual(stored.verification.findings[0].raw, v.raw);
+  });
+}
+
+test("identical cross-gate claims dispatch one repro and retain both sources", async () => {
+  const core = await loadCore();
+  const { repo, base, head } = await setupDiff();
+  let calls = 0;
+  const result = await core.runReviewGate({ repoDir: repo, mode: "diff", base, head, repro: true }, runtime(reviewAgent(
+    { "code-review": [finding()], "test-review": [finding({ id: "T1" })] },
+    async prompt => { calls++; return completePacket(parseWorktree(prompt), parseFindingId(prompt), "CONFIRMED"); },
+  )));
+  assert.equal(calls, 1);
+  assert.deepEqual(result.verification.findings[0].sources, [{ gate: "code-review", id: "C1" }, { gate: "test-review", id: "T1" }]);
+});
+for (const kind of ["invalid-report", "advisory", "performance-without-harness", "performance-with-harness"]) {
+  test(`repro routing: ${kind}`, async () => {
+    const core = await loadCore();
+    const { repo, base, head } = await setupDiff();
+    let calls = 0;
+    const f = finding({ category: kind.startsWith("performance") ? "performance" : "correctness", blocking: kind !== "advisory" });
+    const report = kind === "advisory" ? gateReport("code-review", { findings: [f] }) : failReport("code-review", [f]);
+    if (kind === "invalid-report") report.assessment.finalScore = 0;
+    await core.runReviewGate({ repoDir: repo, mode: "diff", base, head, repro: true,
+      ...(kind === "performance-with-harness" ? { benchmarkHarness: "bench: fixed workload and timing oracle" } : {}) }, runtime(async (prompt, opts) => {
+      if (opts.label.startsWith("repro:")) { calls++; return completePacket(parseWorktree(prompt), parseFindingId(prompt), "CONFIRMED"); }
+      return opts.label === "code-review" ? report : gateReport(opts.label);
+    }));
+    assert.equal(calls, kind === "performance-with-harness" ? 1 : 0);
+  });
+}
+
+for (const rel of ["tests/repro_null.rs", "internal/foo/repro_null_test.go"]) {
+  test(`language-native new test ${rel} is included in integrity evidence`, () => {
+    const wt = makeRepo();
+    const head = commitRel(wt, "source.txt", "protected", "base");
+    writeRel(wt, rel, "new test");
+    const result = inspectIntegrity(wt, undefined, head);
+    assert.deepEqual(result.tamper, []);
+    assert.deepEqual(result.newTests, [rel]);
+  });
+}
+
+test("unexpected source checkout edits invalidate otherwise valid isolated evidence", async () => {
+  const core = await loadCore();
+  const { repo, base, head } = await setupDiff();
+  writeRel(repo, 'user-notes.txt', 'preexisting user work');
+  const result = await core.runReviewGate({ repoDir: repo, mode: 'diff', base, head, repro: true }, runtime(reviewAgent(
+    { 'code-review': [finding()] },
+    async prompt => {
+      const packet = completePacket(parseWorktree(prompt), parseFindingId(prompt), 'CONFIRMED');
+      writeRel(repo, 'src/app.js', 'unexpected source mutation');
+      return packet;
+    },
+  )));
+  const v = result.verification.findings[0];
+  assert.equal(result.drift.detected, true);
+  assert.equal(result.overall, 'INVALID');
+  assert.equal(v.proof.valid, false);
+  assert.equal(v.accepted, false);
+  assert.match(v.proof.reasons.join('\n'), /source checkout changed/);
+  assert.equal(readFileSync(join(repo, 'user-notes.txt'), 'utf8'), 'preexisting user work');
+  assert.equal(readFileSync(join(repo, 'src/app.js'), 'utf8'), 'unexpected source mutation');
+  assert.ok(v.raw.evidence.testHash);
+});

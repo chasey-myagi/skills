@@ -36,7 +36,6 @@ export const CALLOUT_KINDS = [
   "config-default",
 ];
 export const BEHAVIORAL = new Set(["correctness", "error-handling", "data-loss", "security", "performance"]);
-export const HUMAN_DECISION = new Set(["architecture", "maintainability", "style", "test-gap", "requirements"]);
 
 export const CODE_WEIGHTS = {
   Correctness: 0.25,
@@ -448,10 +447,7 @@ export function isRoutable(finding, { benchmarkHarness } = {}) {
     return false;
   }
   if (finding.category === "performance") return Boolean(benchmarkHarness);
-  return finding.category === "correctness"
-    || finding.category === "error-handling"
-    || finding.category === "data-loss"
-    || finding.category === "security";
+  return BEHAVIORAL.has(finding.category);
 }
 
 export function evaluateGate(assigned, raw) {
@@ -479,7 +475,7 @@ export function evaluateGate(assigned, raw) {
       findings: [],
       humanCallouts: [],
       assessment: { blockingReasons: [] },
-      identityOk: false,
+      identityOk: raw.gate === assigned,
       semanticOk: false,
       raw,
       schemaErrors,
@@ -504,7 +500,7 @@ export function evaluateGate(assigned, raw) {
   const semanticOk = identityOk && semanticErrors.length === 0;
   return {
     gate: assigned,
-    verdict: identityOk ? raw.verdict : "INVALID",
+    verdict: semanticOk ? raw.verdict : "INVALID",
     summary: raw.summary,
     findings,
     humanCallouts,

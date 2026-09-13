@@ -18,7 +18,6 @@ import {
   gitC,
   sha,
   freshRunDir,
-  scoresFor,
 } from "./helpers.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -34,31 +33,6 @@ function writeExecutable(dir, name, source) {
 
 function isolatedPath(binDir) {
   return [binDir, dirname(NODE), "/usr/bin", "/bin"].join(":");
-}
-
-function passEnvelope(gate) {
-  const linus = gate === "linus-review";
-  const test = gate === "test-review";
-  const structured_output = {
-    gate,
-    verdict: "PASS",
-    summary: `${gate} ok`,
-    findings: [],
-    humanCallouts: [],
-    assessment: {
-      blockingReasons: [],
-      scores: linus ? [] : scoresFor(gate),
-      finalScore: linus ? undefined : 9.0,
-      rating: linus ? "Looks reasonable." : undefined,
-    },
-  };
-  return {
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    result: JSON.stringify(structured_output),
-    structured_output,
-  };
 }
 
 function claudeFake() {
@@ -165,7 +139,7 @@ test("CLI routes through the existing workflow-run runner", async () => {
     repro: false,
   });
   const r = await runCli(
-    ["--backend", "claude", "--args", argsJson, "--status-file", statusFile, "--timeout", "15"],
+    ["--backend", "claude", "--model", "caller-model", "--route", "linus-review=claude:route-model", "--args", argsJson, "--status-file", statusFile, "--timeout", "15"],
     { binDir, timeoutMs: 25_000 },
   );
   assert.equal(r.code, 0, r.stderr + "\n" + r.stdout);
@@ -176,4 +150,32 @@ test("CLI routes through the existing workflow-run runner", async () => {
   const status = JSON.parse(readFileSync(statusFile, "utf8"));
   assert.equal(status.status, "completed");
   assert.equal(status.agents.length, 3);
+  assert.deepEqual(status.agents.map(a => a.model).sort(), ["caller-model", "caller-model", "route-model"]);
 });
+
+test("CLI backend authentication failure produces blocked sidecar and incomplete review", async () => {
+  const repo = makeRepo();
+  const base = commitRel(repo, "x.js", "old", "base");
+  const head = commitRel(repo, "x.js", "new", "head");
+  const binDir = mkdtempSync(join(tmpdir(), "rgate-failed-cli-"));
+  writeExecutable(binDir, "claude", "#!/usr/bin/env node\nprocess.stdin.resume(); process.stdin.on('end', () => { console.error('OAuth token has expired. Please run /login'); process.exit(1); });\n");
+  const statusFile = join(binDir, "status.json");
+  const runDir = freshRunDir();
+  const r = await runCli(["--backend", "claude", "--args", JSON.stringify({ repoDir: repo, mode: "diff", base, head, runDir }), "--status-file", statusFile], { binDir });
+  assert.equal(r.code, 2);
+  const status = JSON.parse(readFileSync(statusFile));
+  assert.equal(status.status, "blocked");
+  assert.equal(status.agents.length, 3);
+  assert.ok(status.agents.every(a => a.error_code === "AUTH_REQUIRED"));
+  const result = JSON.parse(readFileSync(join(runDir, "review-result.json")));
+  assert.equal(result.executionStatus, "incomplete");
+  assert.equal(result.overall, "INVALID");
+  assert.equal(result.passed, false);
+});
+for (const args of [["--args", "{broken"], ["--unknown-flag"]]) {
+  test(`CLI rejects invalid input ${args[0]} without a backend`, async () => {
+    const r = await runCli(args);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /not valid JSON|unexpected argument/);
+  });
+}

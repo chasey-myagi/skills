@@ -11,9 +11,11 @@ import {
   aggregateCallouts,
   aggregateFindings,
   evaluateGate,
+  sha256,
 } from "./schema.mjs";
 import {
   captureTarget,
+  checkoutFingerprint,
   detectDrift,
   pathInsideRepo,
   unifiedDiff,
@@ -158,15 +160,13 @@ function reviewerPrompt(gate, rubric, captured, snapshotDir, args) {
   const policy = (captured.policyContents || [])
     .map((p) => `### ${p.path} (${p.origin})\n${p.binary ? "(binary)" : p.text || ""}`)
     .join("\n\n");
-  const files = captured.fileContents.map((f) => {
-    if (f.binary) return `### ${f.path} (${f.status}, binary hash=${f.hash})`;
-    if (f.text == null) return `### ${f.path} (${f.status}, deleted)`;
-    return `### ${f.path} (${f.status})\n${f.text}`;
-  }).join("\n\n");
-  const diff = unifiedDiff(captured.repo || args.repoDir, captured);
+  const files = captured.files.slice(0, 200).map(f => `${f.path} (${f.status}, hash=${f.hash})`).join("\n");
+  const diff = readFileSync(args.diffPath, "utf8");
   const attribution = captured.mode === "snapshot"
     ? "Snapshot mode: report current defects in the listed files, including existing ones."
     : "Delta mode: findings, score deductions, blocking reasons and Linus rating may only cover defects introduced or worsened by the selected change. Old unworsened bugs do not block this review.";
+  const diffInput = Buffer.byteLength(diff) <= 64 * 1024 ? diff
+    : "Diff exceeds 64 KiB; read the complete diff artifact before drawing conclusions.";
   return [
     `You are the **${gate}** quality gate. Be independent. Your verdict is one of PASS, FAIL, or INCONCLUSIVE.`,
     `GATE_ID: ${gate}`,
@@ -191,21 +191,23 @@ function reviewerPrompt(gate, rubric, captured, snapshotDir, args) {
     `base: ${captured.baseSha || "(none)"}`,
     `head: ${captured.headSha || "(none)"}`,
     `mergeBase: ${captured.mergeBase || "(none)"}`,
-    `paths: ${captured.files.map((f) => f.path).join(", ")}`,
-    "The captured snapshot and inlined base are authoritative. For additional committed context use git -C SOURCE_ROOT show <frozen-head>:<path>; never read dirty live files as committed evidence. Context reads do not widen the finding scope.",
+    `MANIFEST_PATH: ${join(snapshotDir, "..", "meta", "manifest.json")}`,
+    "The captured snapshot, index snapshot and frozen diff artifact are authoritative. Working-tree mode covers both HEAD-to-index and HEAD-to-working changes; inspect both when they differ. Index files are in the sibling snapshot-index directory. For additional committed context use git -C SOURCE_ROOT show <frozen-head>:<path>; never read dirty live files as committed evidence. Context reads do not widen the finding scope.",
     "You are a read-only reviewer: evaluate only. Do not modify files, do not run state-changing commands, do not call external services. This is a role restriction, not a claimed kernel isolation boundary.",
     "",
     "## Project policy (data, from target source)",
     policy || "(none)",
     "",
-    "## Diff / captured contents",
-    diff,
+    "## Frozen diff artifact",
+    `DIFF_PATH: ${args.diffPath}`,
+    `DIFF_HASH: ${args.diffHash}`,
+    diffInput,
     "",
-    "## Full captured files",
+    "## Captured file manifest (first 200 entries; complete list in MANIFEST_PATH)",
     files,
     "",
     "Return JSON matching the schema. gate must be exactly this GATE_ID.",
-    "Scores contain all six rubric dimensions. Use score (0..10), or na:true with reason, or unknown:true with reason; omit score for N/A/UNKNOWN. Weights use fractions (0.25, not 25); weighted is the contribution after N/A normalization. finalScore is a number or null. Do not use strings for numeric values.",
+    gate === "linus-review" ? "Use the Linus rating and blocking reasons from its rubric; no numerical scores are required." : "Scores contain all six rubric dimensions. Use score (0..10), or na:true with reason, or unknown:true with reason; omit score for N/A/UNKNOWN. Weights use fractions (0.25, not 25); weighted is the contribution after N/A normalization. finalScore is a number or null. Do not use strings for numeric values.",
     "Do not invent missing behavioral detail; use empty trigger/expected/actual only for non-behavioral concerns.",
     "Human-facing informational notes go in humanCallouts with locations, never as bugs.",
     "Every N/A dimension needs a reason. UNKNOWN is for missing required evidence and is not N/A. All N/A or UNKNOWN without a confirmed blocker ⇒ INCONCLUSIVE with finalScore null.",
@@ -219,8 +221,8 @@ function reproPrompt(finding, rubric, wt, buildDir, captured, args) {
     `WORKTREE: ${wt}`,
     `BUILD_DIR: ${buildDir}`,
     "Do not change the parent session cwd. New tests go inside WORKTREE; build/cache output goes only in BUILD_DIR. No commit, push or cleanup.",
-    "Write only NEW files under tests/repro/. Do not modify implementation, existing tests, or runner/CI config.",
-    `Put all build/cache output in BUILD_DIR (set CARGO_TARGET_DIR, GOCACHE, GOTMPDIR, and similar to this absolute path). Do not treat generated build artifacts as permission to edit source.`,
+    "Write only NEW files under tests/repro/; Rust may use tests/repro_*.rs and Go may use repro_*_test.go within the package under test. Do not modify implementation, existing tests, or runner/CI config.",
+    `Put all build/cache output in BUILD_DIR (CARGO_TARGET_DIR, GOCACHE, GOTMPDIR, PYTHONPYCACHEPREFIX, npm cache). Set PYTHONDONTWRITEBYTECODE=1 and disable pytest cache with -p no:cacheprovider. Provision dependencies outside WORKTREE; if the project requires in-tree generated files or dependency installation, return BLOCKED with the required setup. Ignored files can alter behavior and are not exempt from source integrity checks.`,
     "",
     "## Rubric",
     rubric,
@@ -269,166 +271,185 @@ export async function runReviewGate(rawArgs, runtime = {}) {
   };
 
   try {
-  const captured = captureTarget({ ...args, repoDir: repo }, repo);
-  const { snapshotDir, manifestPath } = writeSnapshot(runDir, captured);
-  result.scope = {
-    mode: captured.mode,
-    repoDir: repo,
-    sourceRoot: repo,
-    base: captured.baseSha,
-    head: captured.headSha,
-    mergeBase: captured.mergeBase,
-    paths: captured.files.map((f) => f.path),
-    snapshotDir,
-    manifestPath,
-    manifestHash: captured.manifestHash,
-    policy: captured.policy.map(({ path, origin }) => ({ path, origin })),
-  };
-  result.artifacts.snapshotDir = snapshotDir;
-  result.artifacts.manifestPath = manifestPath;
-  persist(runDir, result);
-
-  const rubrics = {
-    "code-review": loadRubric("code-review/code-reviewer.md"),
-    "test-review": loadRubric("test-review/test-reviewer.md"),
-    "linus-review": loadRubric("linus-review/linus-reviewer.md"),
-  };
-  const reproRubric = loadRubric("repro/repro-agent.md");
-
-  phase("Review");
-  const calls = GATE_NAMES.map((gate, index) => async () => {
-    const prompt = reviewerPrompt(gate, rubrics[gate], captured, snapshotDir, args);
-    let raw = null;
-    try {
-      raw = await agent(prompt, { label: gate, phase: "Review", schema: GATE_SCHEMA, model: "opus" });
-    } catch (err) {
-      result.diagnostics.agentFailures.push({ gate, error: err.message });
-      log(`agent ${gate} threw: ${err.message}`);
-    }
-    result.reviews[index] = evaluateGate(gate, raw);
+    const captured = captureTarget({ ...args, repoDir: repo }, repo);
+    const { snapshotDir, manifestPath } = writeSnapshot(runDir, captured);
+    result.scope = {
+      mode: captured.mode,
+      repoDir: repo,
+      sourceRoot: repo,
+      base: captured.baseSha,
+      head: captured.headSha,
+      mergeBase: captured.mergeBase,
+      paths: captured.files.map((f) => f.path),
+      snapshotDir,
+      manifestPath,
+      manifestHash: captured.manifestHash,
+      policy: captured.policy.map(({ path, origin }) => ({ path, origin })),
+    };
+    result.artifacts.snapshotDir = snapshotDir;
+    result.artifacts.manifestPath = manifestPath;
+    const diffPath = join(runDir, "meta", "review.diff");
+    const diff = unifiedDiff(repo, captured);
+    writeFileSync(diffPath, diff);
+    const diffHash = sha256(diff);
+    result.artifacts.diffPath = diffPath;
+    result.artifacts.diffHash = diffHash;
     persist(runDir, result);
-    return raw;
-  });
-  const rawReviews = await parallel(calls);
-  if (!Array.isArray(rawReviews) || rawReviews.length !== GATE_NAMES.length) throw new Error("runtime returned an invalid gate count");
-  const reviews = GATE_NAMES.map((gate, i) => evaluateGate(gate, rawReviews[i]));
-  result.reviews = reviews;
 
-  for (const r of reviews) {
-    if (r.raw == null) {
-      result.diagnostics.agentFailures.push({ gate: r.gate, returned: null });
-      result.diagnostics.missingGates.push(r.gate);
+    const rubrics = {
+      "code-review": loadRubric("code-review/code-reviewer.md"),
+      "test-review": loadRubric("test-review/test-reviewer.md"),
+      "linus-review": loadRubric("linus-review/linus-reviewer.md"),
+    };
+    const reproRubric = loadRubric("repro/repro-agent.md");
+
+    const prompts = GATE_NAMES.map(gate => reviewerPrompt(gate, rubrics[gate], captured, snapshotDir, { ...args, diffPath, diffHash }));
+    if (prompts.some(prompt => Buffer.byteLength(prompt) > 256 * 1024)) throw new Error("review prompt exceeds 256 KiB; narrow the scope or reduce supplied context/policy");
+    phase("Review");
+    const calls = GATE_NAMES.map((gate, index) => async () => {
+      const prompt = prompts[index];
+      let raw = null;
+      try {
+        raw = await agent(prompt, { label: gate, phase: "Review", schema: GATE_SCHEMA });
+      } catch (err) {
+        result.diagnostics.agentFailures.push({ gate, error: err.message });
+        log(`agent ${gate} threw: ${err.message}`);
+      }
+      result.reviews[index] = evaluateGate(gate, raw);
+      persist(runDir, result);
+      return result.reviews[index];
+    });
+    const reviews = await parallel(calls);
+    if (!Array.isArray(reviews) || reviews.length !== GATE_NAMES.length) throw new Error("runtime returned an invalid gate count");
+    result.reviews = reviews;
+
+    for (const r of reviews) {
+      if (r.raw == null) {
+        if (!result.diagnostics.agentFailures.some(f => f.gate === r.gate)) result.diagnostics.agentFailures.push({ gate: r.gate, returned: null });
+        result.diagnostics.missingGates.push(r.gate);
+      } else if (!r.identityOk) {
+        result.diagnostics.identityFailures.push({ gate: r.gate, returned: r.raw.gate });
+      } else if (r.schemaErrors?.length) {
+        result.diagnostics.schemaFailures.push({ gate: r.gate, errors: r.schemaErrors });
+      } else if (!r.semanticOk) {
+        result.diagnostics.semanticFailures.push({ gate: r.gate, errors: r.semanticErrors });
+      }
     }
-    if (r.schemaErrors?.length) result.diagnostics.schemaFailures.push({ gate: r.gate, errors: r.schemaErrors });
-    if (!r.identityOk) result.diagnostics.identityFailures.push({ gate: r.gate, returned: r.raw?.gate ?? null });
-    if (!r.semanticOk && r.raw != null && r.identityOk) {
-      result.diagnostics.semanticFailures.push({ gate: r.gate, errors: r.semanticErrors });
+    result.executionStatus = result.diagnostics.agentFailures.length ? "incomplete" : "completed";
+
+    const findings = aggregateFindings(reviews);
+    const humanCallouts = aggregateCallouts(reviews);
+    result.findings = findings;
+    result.humanCallouts = humanCallouts;
+
+    // Invalid reports remain available, but cannot dispatch evidence-writing agents.
+    const validFindings = aggregateFindings(reviews.filter(r => r.semanticOk));
+    const compatibleDiff = captured.mode === "diff" && captured.headSha;
+    const routed = routeFindings(validFindings, { reproCap: args.reproCap, benchmarkHarness: args.benchmarkHarness });
+    for (const r of reviews.filter(r => r.verdict === "INCONCLUSIVE")) {
+      result.pendingHumanDecisions.push({ gate: r.gate, reason: r.summary });
     }
-  }
-  result.executionStatus = result.diagnostics.agentFailures.length ? "incomplete" : "completed";
-
-  const findings = aggregateFindings(reviews);
-  const humanCallouts = aggregateCallouts(reviews);
-  result.findings = findings;
-  result.humanCallouts = humanCallouts;
-
-  // Invalid reports remain available, but cannot dispatch evidence-writing agents.
-  const validFindings = aggregateFindings(reviews.filter(r => r.semanticOk));
-  const compatibleDiff = captured.mode === "diff" && captured.headSha;
-  const routed = routeFindings(validFindings, { reproCap: args.reproCap, benchmarkHarness: args.benchmarkHarness });
-  result.pendingHumanDecisions.push(...routed.pendingHumanDecisions);
-  for (const r of reviews.filter(r => r.verdict === "INCONCLUSIVE")) {
-    result.pendingHumanDecisions.push({ gate: r.gate, reason: r.summary });
-  }
-  persist(runDir, result);
-  const reproWanted = args.repro;
-  result.verification.enabled = reproWanted;
-  if (reproWanted && !compatibleDiff) {
-    result.verification.skipped = true;
-    result.verification.skipReason = `${captured.mode} cannot be faithfully isolated at a frozen HEAD`;
-    result.verification.parentReproPath = parentReproPath();
-    result.unrunChecks.push("repro skipped for non-diff target");
-  } else if (reproWanted && compatibleDiff) {
-    const verFindings = [...routed.over];
-    result.verification.findings = verFindings;
-    if (routed.taken.length) {
-      phase("Verify");
-      result.verification.ran = true;
-      const reproCalls = routed.taken.map((f) => async () => {
-        const record = { id: f.id, sources: f.sources, claimed: null, accepted: false,
-          officialStatus: "blocking", acceptance: "rejected-invalid-proof", raw: null,
-          proof: { valid: false, reasons: [] }, worktree: null, buildDir: null, testFiles: [] };
-        verFindings.push(record);
-        try {
-          const { worktree, buildDir } = createWorktree(repo, runDir, f.id, captured.headSha);
-          Object.assign(record, { worktree, buildDir });
-          result.artifacts.reproWorktrees.push(worktree);
-          result.verification.worktrees.push({ findingId: f.id, path: worktree, head: captured.headSha, buildDir });
+    persist(runDir, result);
+    const sourceBeforeRepro = args.repro && compatibleDiff && routed.taken.length ? checkoutFingerprint(repo) : null;
+    const reproWanted = args.repro;
+    result.verification.enabled = reproWanted;
+    if (!reproWanted) {
+      result.verification.skipped = true;
+      result.verification.skipReason = "repro disabled";
+    } else if (!compatibleDiff) {
+      result.verification.skipped = true;
+      result.verification.skipReason = `${captured.mode} cannot be faithfully isolated at a frozen HEAD`;
+      result.verification.parentReproPath = parentReproPath();
+      result.unrunChecks.push("repro skipped for non-diff target");
+    } else {
+      const verFindings = [...routed.over];
+      result.verification.findings = verFindings;
+      if (routed.taken.length) {
+        phase("Verify");
+        result.verification.ran = true;
+        const reproCalls = routed.taken.map((f) => async () => {
+          const record = { id: f.id, sources: f.sources, claimed: null, accepted: false,
+            officialStatus: "blocking", acceptance: "rejected-invalid-proof", raw: null,
+            proof: { valid: false, reasons: [] }, worktree: null, buildDir: null, testFiles: [] };
+          verFindings.push(record);
+          try {
+            const { worktree, buildDir } = createWorktree(repo, runDir, f.id, captured.headSha);
+            Object.assign(record, { worktree, buildDir });
+            result.artifacts.reproWorktrees.push(worktree);
+            result.verification.worktrees.push({ findingId: f.id, path: worktree, head: captured.headSha, buildDir });
+            persist(runDir, result);
+            const prompt = reproPrompt(f, reproRubric, worktree, buildDir, captured, args);
+            const claim = await agent(prompt, { label: `repro:${f.id}`, phase: "Verify", schema: REPRO_SCHEMA });
+            record.raw = claim;
+            if (claim == null) throw new Error("repro agent returned null");
+            record.claimed = claim?.verdict || null;
+            persist(runDir, result);
+            const integrity = inspectIntegrity(worktree, buildDir, captured.headSha);
+            const proof = proofValidity(claim, worktree, f.id, integrity.newTests);
+            proof.reasons.push(...integrity.tamper.map(t => `tamper: ${t}`));
+            proof.valid = proof.valid && !integrity.tamper.length;
+            record.proof = { valid: proof.valid, reasons: proof.reasons };
+            record.testFiles = proof.testFiles;
+            record.acceptance = claim?.verdict === "BLOCKED" ? "blocked"
+              : claim?.verdict === "NOT_TESTABLE" ? "not-testable"
+              : proof.valid ? "awaiting-parent" : "rejected-invalid-proof";
+            if (["blocked", "not-testable"].includes(record.acceptance)) result.unrunChecks.push(`repro ${f.id}: ${claim.verdict} ${claim.summary}`);
+          } catch (err) {
+            record.proof = { valid: false, reasons: [`execution blocked: ${err.message}`] };
+            record.acceptance = "blocked";
+            result.unrunChecks.push(`repro ${f.id}: ${err.message}`);
+          }
           persist(runDir, result);
-          const prompt = reproPrompt(f, reproRubric, worktree, buildDir, captured, args);
-          const claim = await agent(prompt, { label: `repro:${f.id}`, phase: "Verify", schema: REPRO_SCHEMA, model: "opus" });
-          record.raw = claim;
-          record.claimed = claim?.verdict || null;
-          persist(runDir, result);
-          const integrity = inspectIntegrity(worktree, buildDir, captured.headSha);
-          const proof = proofValidity(claim, worktree, f.id, integrity.newTests);
-          proof.reasons.push(...integrity.tamper.map(t => `tamper: ${t}`));
-          proof.valid = proof.valid && !integrity.tamper.length;
-          record.proof = { valid: proof.valid, reasons: proof.reasons };
-          record.testFiles = proof.testFiles;
-          record.acceptance = claim?.verdict === "BLOCKED" ? "blocked"
-            : claim?.verdict === "NOT_TESTABLE" ? "not-testable"
-            : proof.valid ? "awaiting-parent" : "rejected-invalid-proof";
-        } catch (err) {
-          record.proof = { valid: false, reasons: [`execution blocked: ${err.message}`] };
-          record.acceptance = "blocked";
-          result.unrunChecks.push(`repro ${f.id}: ${err.message}`);
-        }
-        persist(runDir, result);
-        return record;
-      });
-      await parallel(reproCalls);
+          return record;
+        });
+        await parallel(reproCalls);
+      }
+
+      for (const s of routed.skipped) {
+        verFindings.push({
+          id: s.id,
+          sources: s.sources,
+          claimed: null,
+          accepted: false,
+          officialStatus: "unresolved",
+          acceptance: "not-routed",
+          proof: { valid: false, reasons: [s.why] },
+          worktree: null,
+          buildDir: null,
+          testFiles: [],
+        });
+      }
+      result.verification.findings = verFindings;
+      if (routed.over.length) result.unrunChecks.push(`${routed.over.length} verifiable finding(s) over cap ${args.reproCap}`);
     }
 
-    for (const s of routed.skipped) {
-      verFindings.push({
-        id: s.id,
-        claimed: null,
-        accepted: false,
-        officialStatus: "unresolved",
-        acceptance: "not-routed",
-        proof: { valid: false, reasons: [s.why] },
-        worktree: null,
-        buildDir: null,
-        testFiles: [],
-      });
+    const drift = detectDrift({ ...args, repoDir: repo }, repo, captured, snapshotDir);
+    if (!existsSync(diffPath) || sha256(readFileSync(diffPath)) !== diffHash) {
+      drift.detected = true;
+      drift.details = [drift.details, "diff artifact changed"].filter(Boolean).join("; ");
     }
-    result.verification.findings = verFindings;
-    if (routed.over.length) result.unrunChecks.push(`${routed.over.length} verifiable finding(s) over cap ${args.reproCap}`);
-  } else {
-    result.verification.skipped = !reproWanted;
-    if (!reproWanted) result.verification.skipReason = "repro disabled";
-  }
+    if (sourceBeforeRepro !== null && checkoutFingerprint(repo) !== sourceBeforeRepro) {
+      drift.detected = true;
+      drift.details = [drift.details, "source checkout changed during verification; preserve and inspect the unexpected delta"].filter(Boolean).join("; ");
+      for (const record of result.verification.findings) {
+        record.proof.valid = false;
+        record.proof.reasons.push("source checkout changed during verification");
+        record.acceptance = "rejected-invalid-proof";
+      }
+    }
+    result.drift = drift;
 
-  const drift = detectDrift({ ...args, repoDir: repo }, repo, captured, snapshotDir);
-  result.drift = drift;
-
-  const officialPassGates = reviews.filter((r) => r.identityOk && r.semanticOk && r.verdict === "PASS" && !r.findings.some((f) => f.blocking));
-  result.passCount = officialPassGates.length;
-  const canPass = result.executionStatus === "completed"
-    && officialPassGates.length === GATE_NAMES.length
-    && reviews.length === GATE_NAMES.length
-    && !findings.some((f) => f.blocking)
-    && !drift.detected;
-  result.passed = canPass;
-  result.overall = canPass ? "PASS" : "FAIL";
-
-  const manual = new Set(result.pendingHumanDecisions.map(item => item.id));
-  result.fixQueue = validFindings.filter(f => f.blocking && !manual.has(f.id)).map(f => ({
-    id: f.id, title: f.title, path: f.path, priority: f.priority, sources: f.sources,
-  }));
-  persist(runDir, result);
-  return result;
+    result.passCount = reviews.filter(r => r.verdict === "PASS").length;
+    result.passed = result.executionStatus === "completed" && result.passCount === GATE_NAMES.length && !drift.detected;
+    result.overall = drift.detected || reviews.some(r => r.verdict === "INVALID") ? "INVALID"
+      : reviews.some(r => r.verdict === "FAIL") ? "FAIL"
+      : result.passed ? "PASS" : "INCONCLUSIVE";
+    result.fixQueue = validFindings.filter(f => f.blocking).map(f => ({
+      id: f.id, title: f.title, path: f.path, priority: f.priority, sources: f.sources,
+      verification: result.verification.findings.find(v => v.id === f.id)?.acceptance || "not-run",
+    }));
+    persist(runDir, result);
+    return result;
   } catch (err) {
     result.executionStatus = "incomplete";
     result.overall = "FAIL";

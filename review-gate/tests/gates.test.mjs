@@ -35,13 +35,13 @@ async function committed(core, agent, extra = {}) {
   }, rt(agent));
 }
 
-test("dispatches exactly the three gates with model opus and inlined rubrics", async () => {
+test("dispatches exactly the three gates without overriding caller model and with inlined rubrics", async () => {
   const core = await loadCore();
   const agent = scriptedAgent({});
   const result = await committed(core, agent);
   const labels = agent.calls.map((c) => c.opts.label).sort();
   assert.deepEqual(labels, ["code-review", "linus-review", "test-review"]);
-  assert.equal(agent.calls.every((c) => c.opts.model === "opus"), true);
+  assert.equal(agent.calls.every((c) => c.opts.model === undefined), true);
   assert.equal(agent.calls.every((c) => c.opts.schema && c.opts.schema.required.includes("gate")), true);
   const byGate = Object.fromEntries(agent.calls.map((c) => [c.opts.label, c.prompt]));
   assert.match(byGate["code-review"], /独立的代码审核专家/);
@@ -62,8 +62,11 @@ test("missing gate identity cannot PASS", async () => {
   const result = await committed(core, agent);
   assert.equal(result.executionStatus, "incomplete");
   assert.equal(result.passed, false);
-  assert.equal(result.overall, "FAIL");
-  assert.ok(result.diagnostics.missingGates.includes("linus-review") || result.diagnostics.agentFailures.length);
+  assert.equal(result.overall, "INVALID");
+  assert.deepEqual(result.diagnostics.missingGates, ["linus-review"]);
+  assert.equal(result.diagnostics.agentFailures.length, 1);
+  assert.equal(result.diagnostics.identityFailures.length, 0);
+  assert.equal(result.diagnostics.schemaFailures.length, 0);
 });
 
 test("duplicate or wrong gate identity cannot PASS", async () => {
@@ -87,7 +90,8 @@ test("callout-only PASS creates no fix-queue tasks", async () => {
   const result = await committed(core, agent);
   assert.equal(result.passed, true);
   assert.equal(result.fixQueue.length, 0);
-  assert.ok(result.humanCallouts.length >= 1);
+  assert.equal(result.humanCallouts.length, 2);
+  assert.deepEqual(result.humanCallouts.flatMap(c => c.locations).sort(), ["db/migrate.sql:1", "package.json:3"]);
   assert.equal(result.findings.filter((f) => f.blocking).length, 0);
 });
 
@@ -96,16 +100,16 @@ test("PASS below code-review threshold is rejected without rescoring", async () 
   const low = gateReport("code-review", {
     assessment: {
       blockingReasons: [],
-      scores: scoresFor("code-review", 9).map((s) => s.dimension === "Correctness" ? { ...s, score: 6.0 } : s),
-      finalScore: 8.0,
+      scores: scoresFor("code-review", 9).map((s) => s.dimension === "Correctness" ? { ...s, score: 6.0, weighted: 1.5 } : s),
+      finalScore: 8.25,
     },
   });
   const agent = scriptedAgent({ "code-review": low });
   const result = await committed(core, agent);
   assert.equal(result.passed, false);
-  assert.ok(result.diagnostics.semanticFailures.length > 0);
+  assert.deepEqual(result.diagnostics.semanticFailures[0].errors, ["applicable dimension below threshold"]);
   const cr = result.reviews.find((r) => r.raw && (r.raw.gate === "code-review" || r.gate === "code-review"));
-  assert.equal(cr.raw.assessment.finalScore, 8.0);
+  assert.equal(cr.raw.assessment.finalScore, 8.25);
   assert.equal(cr.raw.assessment.scores.find((s) => s.dimension === "Correctness").score, 6.0);
 });
 
@@ -159,7 +163,7 @@ test("agent null is execution incomplete, distinct from review FAIL", async () =
 
   const incomplete = await committed(core, scriptedAgent({ "code-review": null }));
   assert.equal(incomplete.executionStatus, "incomplete");
-  assert.equal(incomplete.overall, "FAIL");
+  assert.equal(incomplete.overall, "INVALID");
   assert.ok(incomplete.diagnostics.agentFailures.length > 0);
 });
 
@@ -189,7 +193,7 @@ test("UNKNOWN dimensions yield INCONCLUSIVE with null finalScore, not a process 
     }),
   }));
   assert.equal(result.passed, false);
-  assert.notEqual(result.overall, "PASS");
+  assert.equal(result.overall, "INCONCLUSIVE");
   assert.equal(result.executionStatus, "completed");
   const cr = result.reviews.find((r) => r.raw.gate === "code-review" || r.gate === "code-review");
   assert.equal(cr.verdict, "INCONCLUSIVE");

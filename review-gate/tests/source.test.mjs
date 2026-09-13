@@ -310,7 +310,7 @@ test("drift of a working-tree target invalidates PASS", async () => {
     log() {},
   });
   assert.equal(result.drift.detected, true);
-  assert.equal(result.overall, "FAIL");
+  assert.equal(result.overall, "INVALID");
   assert.equal(result.passed, false);
 });
 
