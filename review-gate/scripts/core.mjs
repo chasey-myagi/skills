@@ -15,6 +15,7 @@ import {
 } from "./schema.mjs";
 import {
   captureTarget,
+  git,
   checkoutFingerprint,
   detectDrift,
   pathInsideRepo,
@@ -51,7 +52,7 @@ function parseArgs(raw) {
   if (A == null || typeof A !== "object" || Array.isArray(A)) {
     throw new Error("review-gate: args must be a JSON object");
   }
-  const allowed = new Set(["repoDir", "mode", "base", "head", "paths", "context", "constraints", "repro", "reproCap", "runDir", "benchmarkHarness", "history"]);
+  const allowed = new Set(["repoDir", "mode", "base", "head", "paths", "context", "constraints", "repro", "reproCap", "runDir", "benchmarkHarness"]);
   const unknown = Object.keys(A).filter(key => !allowed.has(key));
   if (unknown.length) throw new Error(`review-gate: unknown args: ${unknown.join(", ")}`);
   for (const key of ["context", "constraints", "benchmarkHarness"]) {
@@ -63,7 +64,7 @@ function parseArgs(raw) {
   if (A.runDir !== undefined && (typeof A.runDir !== "string" || !A.runDir)) throw new Error("review-gate: runDir must be a nonempty path");
   let mode = A.mode;
   if (!mode && A.base && A.head) mode = "diff";
-  if (!mode) throw new Error("review-gate: mode is required (diff|working-tree|snapshot)");
+  if (!mode) throw new Error("review-gate: mode is required unless base and head select diff (diff|working-tree|snapshot)");
   if (mode !== "diff" && mode !== "working-tree" && mode !== "snapshot") {
     throw new Error(`review-gate: unknown mode '${mode}'`);
   }
@@ -123,7 +124,7 @@ function emptyResult() {
   return {
     schemaVersion: SCHEMA_VERSION,
     executionStatus: "incomplete",
-    overall: "FAIL",
+    overall: "INVALID",
     passed: false,
     passCount: 0,
     total: GATE_NAMES.length,
@@ -258,6 +259,8 @@ export async function runReviewGate(rawArgs, runtime = {}) {
 
   const args = parseArgs(rawArgs);
   const repo = realpathSync(resolve(args.repoDir));
+  const top = realpathSync(git(repo, ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim());
+  if (repo !== top) throw new Error("review-gate: repoDir must be the Git repository root; use paths to select a subdirectory");
   const runDir = createRunDir(args.runDir, repo);
   const result = emptyResult();
   result.constraints = args.constraints;
@@ -289,7 +292,7 @@ export async function runReviewGate(rawArgs, runtime = {}) {
     result.artifacts.snapshotDir = snapshotDir;
     result.artifacts.manifestPath = manifestPath;
     const diffPath = join(runDir, "meta", "review.diff");
-    const diff = unifiedDiff(repo, captured);
+    const diff = unifiedDiff(repo, captured, runDir);
     writeFileSync(diffPath, diff);
     const diffHash = sha256(diff);
     result.artifacts.diffPath = diffPath;
@@ -337,20 +340,26 @@ export async function runReviewGate(rawArgs, runtime = {}) {
     }
     result.executionStatus = result.diagnostics.agentFailures.length ? "incomplete" : "completed";
 
-    const findings = aggregateFindings(reviews);
-    const humanCallouts = aggregateCallouts(reviews);
+    const validReviews = reviews.filter(r => r.semanticOk);
+    const findings = aggregateFindings(validReviews);
+    const humanCallouts = aggregateCallouts(validReviews);
     result.findings = findings;
     result.humanCallouts = humanCallouts;
 
     // Invalid reports remain available, but cannot dispatch evidence-writing agents.
-    const validFindings = aggregateFindings(reviews.filter(r => r.semanticOk));
+    const validFindings = findings;
     const compatibleDiff = captured.mode === "diff" && captured.headSha;
     const routed = routeFindings(validFindings, { reproCap: args.reproCap, benchmarkHarness: args.benchmarkHarness });
     for (const r of reviews.filter(r => r.verdict === "INCONCLUSIVE")) {
       result.pendingHumanDecisions.push({ gate: r.gate, reason: r.summary });
     }
     persist(runDir, result);
-    const sourceBeforeRepro = args.repro && compatibleDiff && routed.taken.length ? checkoutFingerprint(repo) : null;
+    let sourceBeforeRepro = null;
+    let fingerprintError = null;
+    if (args.repro && compatibleDiff && routed.taken.length) {
+      try { sourceBeforeRepro = checkoutFingerprint(repo); }
+      catch (err) { fingerprintError = `cannot fingerprint source checkout: ${err.message}`; }
+    }
     const reproWanted = args.repro;
     result.verification.enabled = reproWanted;
     if (!reproWanted) {
@@ -361,6 +370,10 @@ export async function runReviewGate(rawArgs, runtime = {}) {
       result.verification.skipReason = `${captured.mode} cannot be faithfully isolated at a frozen HEAD`;
       result.verification.parentReproPath = parentReproPath();
       result.unrunChecks.push("repro skipped for non-diff target");
+    } else if (fingerprintError) {
+      result.verification.skipped = true;
+      result.verification.skipReason = fingerprintError;
+      result.unrunChecks.push(fingerprintError);
     } else {
       const verFindings = [...routed.over];
       result.verification.findings = verFindings;
@@ -428,13 +441,19 @@ export async function runReviewGate(rawArgs, runtime = {}) {
       drift.detected = true;
       drift.details = [drift.details, "diff artifact changed"].filter(Boolean).join("; ");
     }
-    if (sourceBeforeRepro !== null && checkoutFingerprint(repo) !== sourceBeforeRepro) {
-      drift.detected = true;
-      drift.details = [drift.details, "source checkout changed during verification; preserve and inspect the unexpected delta"].filter(Boolean).join("; ");
-      for (const record of result.verification.findings) {
-        record.proof.valid = false;
-        record.proof.reasons.push("source checkout changed during verification");
-        record.acceptance = "rejected-invalid-proof";
+    if (sourceBeforeRepro !== null) {
+      let sourceDelta = null;
+      try {
+        if (checkoutFingerprint(repo) !== sourceBeforeRepro) sourceDelta = "source checkout changed during verification; preserve and inspect the unexpected delta";
+      } catch (err) { sourceDelta = `source checkout can no longer be fingerprinted: ${err.message}`; }
+      result.verification.sourceDelta = { detected: sourceDelta !== null, details: sourceDelta };
+      if (sourceDelta) {
+        result.unrunChecks.push(sourceDelta);
+        for (const record of result.verification.findings.filter(v => v.worktree)) {
+          record.proof.valid = false;
+          record.proof.reasons.push(sourceDelta);
+          record.acceptance = "rejected-invalid-proof";
+        }
       }
     }
     result.drift = drift;
@@ -452,7 +471,7 @@ export async function runReviewGate(rawArgs, runtime = {}) {
     return result;
   } catch (err) {
     result.executionStatus = "incomplete";
-    result.overall = "FAIL";
+    result.overall = "INVALID";
     result.passed = false;
     result.error = err.message;
     try { persist(runDir, result); } catch (saveError) { log(`could not preserve result: ${saveError.message}`); }

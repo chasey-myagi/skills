@@ -61,7 +61,7 @@ test("case differences in path or expected stay distinct claims", async () => {
     ]),
   }));
   const ids = new Set(result.findings.map((f) => f.id));
-  assert.equal(ids.size >= 2, true);
+  assert.equal(ids.size, 2);
   assert.notEqual(
     result.findings.find((f) => f.expected === "TRUE").id,
     result.findings.find((f) => f.expected === "true").id,

@@ -144,3 +144,5 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 - Each review is a **fresh agent**, without the author's discussion history. A re-review receives the current scope and accepted evidence with finding IDs, not instructions to preserve the earlier conclusion.
 - If the user disagrees with a score, they can override the gate. But the default is strict enforcement.
 - The parent workflow chooses the checkpoint; this skill evaluates test quality without redefining the parent's TDD order.
+
+当前组合的独立前向校准输入与原始判定见 [calibration evidence](../review-gate/references/calibration/README.md)。历史例子的分数不是新版 rubric 的断言。

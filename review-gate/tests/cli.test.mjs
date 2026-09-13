@@ -176,6 +176,6 @@ for (const args of [["--args", "{broken"], ["--unknown-flag"]]) {
   test(`CLI rejects invalid input ${args[0]} without a backend`, async () => {
     const r = await runCli(args);
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /not valid JSON|unexpected argument/);
+    assert.match(r.stderr, args[0] === "--args" ? /not valid JSON/ : /unexpected argument/);
   });
 }

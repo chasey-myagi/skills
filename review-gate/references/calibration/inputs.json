@@ -1,0 +1,38 @@
+[
+  {
+    "id": "A",
+    "skill": "code-review",
+    "mode": "diff",
+    "input": "变更：`src/config.ts`，+11/-3 行。给端口解析加默认值与范围校验。无 spec、无测试。\n\n```diff\n-export function parsePort(raw: string): number {\n-  return parseInt(raw, 10);\n-}\n+export function parsePort(raw: string | undefined): number {\n+  if (raw === undefined || raw.trim() === \"\") {\n+    return 3000;\n+  }\n+  const port = parseInt(raw, 10);\n+  if (Number.isNaN(port) || port < 1 || port > 65535) {\n+    return 3000;\n+  }\n+  return port;\n+}\n```"
+  },
+  {
+    "id": "B",
+    "skill": "code-review",
+    "mode": "diff",
+    "input": "变更：`src/users.ts`，+2/-1 行。`name` 来自 `GET /users?name=...` 的未处理 HTTP 参数。\n\n```diff\n export async function findUser(db, name: string) {\n-  return db.query(\"SELECT * FROM users WHERE name = '\" + name + \"'\");\n+  const sql = `SELECT * FROM users WHERE name = '${name}'`;\n+  return db.query(sql);\n }\n```"
+  },
+  {
+    "id": "D",
+    "skill": "test-review",
+    "mode": "snapshot",
+    "input": "被测：`slugify(input: string): string` —— 标题转 URL slug（转小写、空格转连字符、折叠连续空格、去标点、去首尾空格）。无状态纯函数。无 spec。\n\n```ts\nimport { slugify } from \"./slugify\";\n\ntest(\"converts spaces to hyphens\", () => { expect(slugify(\"hello world\")).toBe(\"hello-world\"); });\ntest(\"lowercases input\",        () => { expect(slugify(\"Hello World\")).toBe(\"hello-world\"); });\ntest(\"strips punctuation\",      () => { expect(slugify(\"hello, world!\")).toBe(\"hello-world\"); });\ntest(\"collapses multiple spaces\", () => { expect(slugify(\"hello   world\")).toBe(\"hello-world\"); });\ntest(\"trims leading and trailing spaces\", () => { expect(slugify(\"  hello world  \")).toBe(\"hello-world\"); });\n```"
+  },
+  {
+    "id": "E",
+    "skill": "test-review",
+    "mode": "snapshot",
+    "input": "`src/slugify.test.ts`，15 个测试。无状态纯函数，无 spec。\n\n```ts\ndescribe(\"slugify\", () => {\n  test(\"converts spaces to hyphens\", () => expect(slugify(\"hello world\")).toBe(\"hello-world\"));\n  test(\"lowercases input\", () => expect(slugify(\"Hello World\")).toBe(\"hello-world\"));\n  test(\"strips punctuation\", () => expect(slugify(\"hello, world!\")).toBe(\"hello-world\"));\n  test(\"collapses consecutive spaces\", () => expect(slugify(\"a   b\")).toBe(\"a-b\"));\n  test(\"trims surrounding whitespace\", () => expect(slugify(\"  hi there  \")).toBe(\"hi-there\"));\n  test(\"keeps digits\", () => expect(slugify(\"Top 10 Tips\")).toBe(\"top-10-tips\"));\n  test(\"empty string returns empty\", () => expect(slugify(\"\")).toBe(\"\"));\n  test(\"whitespace-only returns empty\", () => expect(slugify(\"   \")).toBe(\"\"));\n  test(\"punctuation-only returns empty\", () => expect(slugify(\"!!!\")).toBe(\"\"));\n  test(\"no leading/trailing hyphen from edge punctuation\", () => expect(slugify(\"!hello world!\")).toBe(\"hello-world\"));\n  test(\"punctuation next to space doesn't double-hyphen\", () => expect(slugify(\"a , b\")).toBe(\"a-b\"));\n  test(\"collapses pre-existing hyphens\", () => expect(slugify(\"a--b\")).toBe(\"a-b\"));\n  test(\"tabs and newlines treated as separators\", () => expect(slugify(\"a\\tb\\nc\")).toBe(\"a-b-c\"));\n  test(\"output only ever contains [a-z0-9-]\", () => { /* property over several inputs */ });\n  test(\"never has leading or trailing hyphen\", () => { /* property over several inputs */ });\n});\n```"
+  },
+  {
+    "id": "C",
+    "skill": "code-review",
+    "mode": "diff",
+    "input": "File src/users.ts. name is raw GET /users?name= input. Existing contract: exact name lookup; database accepts PostgreSQL parameter binding.\n```diff\n export async function findUser(db, name: string) {\n-  return db.query(\"SELECT * FROM users WHERE name = $1\", [name]);\n+  const sql = `SELECT * FROM users WHERE name = '${name}'`;\n+  return db.query(sql);\n }\n```"
+  },
+  {
+    "id": "F",
+    "skill": "code-review",
+    "mode": "snapshot",
+    "input": "File src/users.ts. name is raw GET /users?name= input. Contract: exact name lookup.\n```ts\nexport async function findUser(db, name: string) {\n const sql = `SELECT * FROM users WHERE name = '${name}'`;\n return db.query(sql);\n}\n```"
+  }
+]

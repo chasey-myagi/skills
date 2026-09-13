@@ -122,7 +122,7 @@ test("PASS with blockingReasons is rejected", async () => {
   });
   const result = await committed(core, agent);
   assert.equal(result.passed, false);
-  assert.ok(result.diagnostics.semanticFailures.length > 0);
+  assert.deepEqual(result.diagnostics.semanticFailures[0].errors, ["PASS with blockingReasons"]);
 });
 
 test("FAIL without a blocking reason cannot green", async () => {
@@ -136,10 +136,10 @@ test("FAIL without a blocking reason cannot green", async () => {
   });
   const result = await committed(core, agent);
   assert.equal(result.passed, false);
-  assert.ok(result.diagnostics.semanticFailures.length > 0);
+  assert.deepEqual(result.diagnostics.semanticFailures[0].errors, ["FAIL with no blocking reason"]);
 });
 
-test("finding missing path or evidence is not admitted as a blocker", async () => {
+test("finding missing path is not admitted as a blocker", async () => {
   const core = await loadCore();
   const agent = scriptedAgent({
     "code-review": failReport("code-review", [

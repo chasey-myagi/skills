@@ -269,7 +269,6 @@ test("policy files come from the target source, not session cwd", async () => {
     head,
     runDir: freshRunDir(),
     repro: false,
-    history: "SECRET_CONVERSATION_HISTORY",
   }, {
     agent: async (prompt, opts) => {
       prompts.push(prompt);

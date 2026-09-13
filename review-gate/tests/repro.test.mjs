@@ -133,7 +133,7 @@ test("falsifiable linus and test-review findings are routed", async () => {
       return reproClaim(id, "CONFIRMED");
     },
   )));
-  assert.ok(routed.length >= 2, `routed ${routed.join(",")}`);
+  assert.equal(routed.length, 2);
   assert.equal(result.verification.ran, true);
   assert.equal(result.passed, false);
 });
@@ -208,7 +208,7 @@ test("over-cap and skipped remain unresolved, never REFUTED", async () => {
     },
   )));
   const over = result.verification.findings.filter((f) => f.acceptance === "over-cap");
-  assert.ok(over.length >= 2);
+  assert.equal(over.length, 2);
   assert.equal(over.every((f) => f.claimed !== "REFUTED" && f.officialStatus !== "refuted"), true);
   assert.equal(result.passed, false);
 });
@@ -467,8 +467,9 @@ test("unexpected source checkout edits invalidate otherwise valid isolated evide
     },
   )));
   const v = result.verification.findings[0];
-  assert.equal(result.drift.detected, true);
-  assert.equal(result.overall, 'INVALID');
+  assert.equal(result.drift.detected, false);
+  assert.equal(result.verification.sourceDelta.detected, true);
+  assert.equal(result.overall, 'FAIL');
   assert.equal(v.proof.valid, false);
   assert.equal(v.accepted, false);
   assert.match(v.proof.reasons.join('\n'), /source checkout changed/);

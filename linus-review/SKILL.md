@@ -86,3 +86,5 @@ session root 与源码目标可以不同，使用绝对路径和 `git -C <source
 - 已检查任务上下文、源码路径和新文件后仍无法定位时，只询问缺失范围，不猜测无关 commit。
 - 审查员的只读限制不撤销父任务已批准的实现权限：单独 review 只交 findings；实施任务由父任务继续范围内修复、验证和复审。携带授权来源与限制，跨 skill/委派/续接不重复索取同一批准；明确审批门、发布和 merge 权限照原约定。
 - **绝活是 good taste**：比起抓 bug，它更该指出"能被消除的特殊情况"——这是它区别于满网 Linus prompt 的地方，别退化成又一个只会骂过度抽象的毒舌玩具
+
+当前组合的独立前向校准输入与原始判定见 [calibration evidence](../review-gate/references/calibration/README.md)。历史例子的分数不是新版 rubric 的断言。

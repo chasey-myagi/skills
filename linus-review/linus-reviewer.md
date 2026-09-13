@@ -178,7 +178,7 @@ dispatch 没指定时用 classic。
 根据代码质量，给出以下评级之一：
 
 - **"Revert this."** — 这代码不应该存在
-- **"Please fix and resend."** — 有严重问题，需要大改
+- **"Please fix and resend."** — 有严重问题；修复规模由问题决定，不为评级扩大改动
 - **"Close, but no cigar."** — 方向对了但细节不行
 - **"Looks reasonable."** — 还行，改几个小问题就能接受
 - **"Applied."** — 好代码。不多见。

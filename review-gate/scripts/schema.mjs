@@ -328,19 +328,12 @@ export function normalizeCallout(raw) {
   };
 }
 
-export function semanticCheck(assignedGate, report) {
+function semanticCheck(assignedGate, report, admitted) {
   const errors = [];
   if (!report || typeof report !== "object") return ["report is not an object"];
   if (report.gate !== assignedGate) errors.push(`gate identity ${report.gate} !== ${assignedGate}`);
   if (!nonempty(report.summary)) errors.push("review summary is empty");
   const verdict = report.verdict;
-  const findings = Array.isArray(report.findings) ? report.findings : [];
-  const admitted = [];
-  for (const f of findings) {
-    const n = normalizeFinding(f);
-    if (!n.ok) errors.push(...n.errors);
-    else admitted.push(n.finding);
-  }
   const blocking = admitted.filter((f) => f.blocking);
   const reasons = Array.isArray(report.assessment?.blockingReasons) ? report.assessment.blockingReasons.filter(nonempty) : [];
   if (verdict === "PASS") {
@@ -353,6 +346,7 @@ export function semanticCheck(assignedGate, report) {
       if (!rating) errors.push("linus PASS missing rating");
     }
   }
+  if (verdict === "INCONCLUSIVE" && (blocking.length || reasons.length)) errors.push("INCONCLUSIVE with blocking findings or reasons");
   if (verdict === "FAIL" && !blocking.length && !reasons.length) {
     errors.push("FAIL with no blocking reason");
   }
@@ -495,7 +489,7 @@ export function evaluateGate(assigned, raw) {
     if (n.ok) humanCallouts.push(n.callout);
     else findingErrors.push(...n.errors);
   }
-  const semanticErrors = [...semanticCheck(assigned, raw), ...findingErrors];
+  const semanticErrors = [...semanticCheck(assigned, raw, findings), ...findingErrors];
   const identityOk = raw.gate === assigned;
   const semanticOk = identityOk && semanticErrors.length === 0;
   return {

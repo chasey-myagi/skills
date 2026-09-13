@@ -58,6 +58,7 @@ export function renderHandoff(result) {
 
   sections.push("## Verification");
   sections.push(`- enabled: ${ver.enabled} ran: ${ver.ran} skipped: ${ver.skipped}`);
+  if (ver.sourceDelta?.detected) sections.push(`- sourceDelta: ${ver.sourceDelta.details}`);
   if (ver.skipReason) sections.push(`- skipReason: ${ver.skipReason}`);
   if (ver.parentReproPath) sections.push(`- parentReproPath: ${ver.parentReproPath}`);
   const vf = ver.findings || [];
@@ -77,6 +78,9 @@ export function renderHandoff(result) {
 
   sections.push("## Unrun checks");
   sections.push(lines(result.unrunChecks || []));
+
+  sections.push("## Invalid reports requiring correction or rerun");
+  sections.push(lines((result.reviews || []).filter(r => r && !r.semanticOk).map(r => `${r.gate}: ${r.summary}; see the original report below`)));
 
   sections.push("## Original gate reports");
   for (const r of (result.reviews || []).filter(Boolean)) {

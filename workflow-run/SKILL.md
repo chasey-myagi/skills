@@ -54,7 +54,7 @@ node <review-gate skill 目录>/scripts/run.mjs \
 
 结果解释以 `review-gate` 的 schema 和 skill 为准。保留各门原始报告、finding ID、知情提示、scope 和产物路径；不能只报 PASS/FAIL。Repro 候选结论需要父任务机械验收，不能由 workflow 自动改写原始 gate 的判定。
 
-先看 runner 退出码和 sidecar：exit 2 表示有 agent 没真正跑成，不要把合成的 `overall: FAIL` 当成审查结论。exit 0 和 `completed` 只证明已调用的 agent 执行成功；还要核对预期三个 gate 的名称、结果数量和各自 verdict，不能从 runner 状态推断脚本实际调用了哪些 gate。
+先看 runner 退出码和 sidecar：exit 2 表示有 agent 没真正跑成，review-gate 的 `overall: INVALID` 不能当成有效审查结论。exit 0 和 `completed` 只证明已调用的 agent 执行成功；还要核对预期三个 gate 的名称、结果数量和各自 verdict，不能从 runner 状态推断脚本实际调用了哪些 gate。
 
 ## sidecar（`--status-file`）
 

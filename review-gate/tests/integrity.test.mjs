@@ -85,6 +85,7 @@ test('a runtime interruption retains completed independent gate output', async (
   const saved = JSON.parse(readFileSync(join(runDir, 'review-result.json')));
   assert.equal(saved.passed, false);
   assert.equal(saved.executionStatus, 'incomplete');
+  assert.equal(saved.overall, 'INVALID');
   assert.equal(saved.reviews[0].raw.gate, 'code-review');
 });
 

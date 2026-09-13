@@ -213,26 +213,15 @@ export function captureTarget(args, repo) {
     const staged = splitZ(git(repo, ["diff", "--no-renames", "-z", "--name-only", "--cached"]).stdout).map(assertRelPath);
     const unstaged = splitZ(git(repo, ["diff", "--no-renames", "-z", "--name-only"]).stdout).map(assertRelPath);
     const untracked = splitZ(git(repo, ["ls-files", "-z", "--others", "--exclude-standard"]).stdout).map(assertRelPath);
-    const stagedOnly = new Set(staged.filter((p) => !unstaged.includes(p) && !untracked.includes(p)));
     const all = [...new Set([...staged, ...unstaged, ...untracked])];
     const selected = intersect(all, filter);
     for (const path of selected.sort()) {
       resolveInRepo(repo, path, { follow: true });
       const abs = resolve(repo, path);
-      let buf = null;
-      let status = "modified";
-      if (untracked.includes(path) || unstaged.includes(path)) {
-        if (existsSync(abs) && lstatSync(abs).isFile() || existsSync(abs) && lstatSync(abs).isSymbolicLink()) {
-          buf = readFileSync(abs);
-          status = untracked.includes(path) ? "added" : "modified";
-        } else {
-          status = "deleted";
-        }
-      } else if (stagedOnly.has(path)) {
-        buf = indexBlob(repo, path);
-        status = buf ? "added" : "deleted";
-      }
-      const record = fileRecord(path, buf, status);
+      const st = existsSync(abs) ? lstatSync(abs) : null;
+      const buf = st?.isFile() ? readFileSync(abs) : null;
+      if (st && !st.isFile()) throw new CaptureError(`not a regular file: ${path}`);
+      const record = fileRecord(path, buf, "modified");
       record.baseBytes = headSha ? blobAt(repo, headSha, path) : null;
       record.indexBytes = indexBlob(repo, path);
       record.indexHash = record.indexBytes === null ? "deleted" : sha256(record.indexBytes);
@@ -303,6 +292,10 @@ export function captureTarget(args, repo) {
 export function writeSnapshot(runDir, captured) {
   const snap = join(runDir, "snapshot");
   mkdirSync(snap, { recursive: true });
+  if (captured.mode === "working-tree") {
+    mkdirSync(join(runDir, "snapshot-base"));
+    mkdirSync(join(runDir, "snapshot-index"));
+  }
   for (const f of captured.fileContents) {
     if (captured.mode === "working-tree") {
       for (const [dir, bytes] of [["snapshot-base", f.baseBytes], ["snapshot-index", f.indexBytes]]) {
@@ -364,18 +357,19 @@ export function detectDrift(args, repo, captured, snapshotDir) {
   return { detected: details.length > 0, details: details.length ? details.join("; ") : null };
 }
 
-export function unifiedDiff(repo, captured) {
+export function unifiedDiff(repo, captured, runDir) {
   const paths = captured.files.map(f => f.path);
   if (captured.mode === "diff") {
     return git(repo, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "-M", captured.mergeBase, captured.headSha, "--", ...paths], { encoding: "utf8" }).stdout;
   }
   if (captured.mode === "working-tree") {
-    // Both sides are captured bytes, including staged/new/deleted files; never diff the moving checkout.
-    return captured.fileContents.map(f => {
-      const before = asText(f.baseBytes);
-      const index = asText(f.indexBytes);
-      return `### ${JSON.stringify(f.path)}\nBASE (${f.baseBytes === null ? "absent" : captured.headSha}):\n${before?.binary ? "(binary)" : before?.text ?? "(absent)"}\nINDEX SNAPSHOT:\n${index?.binary ? "(binary)" : index?.text ?? "(absent)"}\nWORKING SNAPSHOT:\n${f.binary ? "(binary)" : f.text ?? "(deleted)"}`;
-    }).join("\n\n");
+    // git --no-index returns 1 for a legitimate diff; both sides are frozen directories.
+    const pairs = [["snapshot-base", "snapshot-index"], ["snapshot-index", "snapshot"]];
+    return pairs.map(([before, after]) => {
+      const r = git(runDir, ["diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--", before, after], { encoding: "utf8", allowFail: true });
+      if (r.status !== 0 && r.status !== 1) throw new CaptureError(`frozen diff failed: ${r.stderr}`);
+      return `# ${before} -> ${after}\n${r.stdout}`;
+    }).join("\n");
   }
   return "Snapshot review: current files only; no delta attribution.";
 }
