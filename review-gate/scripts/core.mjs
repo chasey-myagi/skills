@@ -347,9 +347,8 @@ export async function runReviewGate(rawArgs, runtime = {}) {
     result.humanCallouts = humanCallouts;
 
     // Invalid reports remain available, but cannot dispatch evidence-writing agents.
-    const validFindings = findings;
     const compatibleDiff = captured.mode === "diff" && captured.headSha;
-    const routed = routeFindings(validFindings, { reproCap: args.reproCap, benchmarkHarness: args.benchmarkHarness });
+    const routed = routeFindings(findings, { reproCap: args.reproCap, benchmarkHarness: args.benchmarkHarness });
     for (const r of reviews.filter(r => r.verdict === "INCONCLUSIVE")) {
       result.pendingHumanDecisions.push({ gate: r.gate, reason: r.summary });
     }
@@ -360,9 +359,8 @@ export async function runReviewGate(rawArgs, runtime = {}) {
       try { sourceBeforeRepro = checkoutFingerprint(repo); }
       catch (err) { fingerprintError = `cannot fingerprint source checkout: ${err.message}`; }
     }
-    const reproWanted = args.repro;
-    result.verification.enabled = reproWanted;
-    if (!reproWanted) {
+    result.verification.enabled = args.repro;
+    if (!args.repro) {
       result.verification.skipped = true;
       result.verification.skipReason = "repro disabled";
     } else if (!compatibleDiff) {
@@ -463,10 +461,14 @@ export async function runReviewGate(rawArgs, runtime = {}) {
     result.overall = drift.detected || reviews.some(r => r.verdict === "INVALID") ? "INVALID"
       : reviews.some(r => r.verdict === "FAIL") ? "FAIL"
       : result.passed ? "PASS" : "INCONCLUSIVE";
-    result.fixQueue = validFindings.filter(f => f.blocking).map(f => ({
+    result.fixQueue = findings.filter(f => f.blocking).map(f => ({
       id: f.id, title: f.title, path: f.path, priority: f.priority, sources: f.sources,
       verification: result.verification.findings.find(v => v.id === f.id)?.acceptance || "not-run",
     }));
+    result.gateBlockingReasons = validReviews.filter(r => r.verdict === "FAIL").map(r => ({ gate: r.gate, reasons: r.assessment.blockingReasons }));
+    for (const r of validReviews.filter(r => r.verdict === "FAIL" && !r.findings.some(f => f.blocking))) {
+      result.fixQueue.push({ id: `gate:${r.gate}`, gate: r.gate, title: r.assessment.blockingReasons.join("; "), verification: "requires-review-followup" });
+    }
     persist(runDir, result);
     return result;
   } catch (err) {

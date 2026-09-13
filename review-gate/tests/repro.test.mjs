@@ -179,11 +179,19 @@ test("architecture / test-gap without behavior fields are not routed", async () 
   assert.equal(result.verification.ran, false);
   assert.equal(result.pendingHumanDecisions.length, 0);
   assert.equal(result.fixQueue.length, 2);
+  assert.equal(result.verification.findings.length, 2);
+  for (const v of result.verification.findings) {
+    assert.equal(v.acceptance, "not-routed");
+    assert.equal(v.officialStatus, "unresolved");
+    assert.equal(v.accepted, false);
+    assert.match(v.proof.reasons.join("\n"), /not a reproducible behavioral claim/);
+  }
+  assert.ok(result.fixQueue.every(f => f.verification === "not-routed"));
   assert.deepEqual(result.fixQueue.flatMap(f => f.sources.map(s => s.id)).sort(), ["A1", "G1"]);
   assert.equal(result.passed, false);
 });
 
-test("over-cap and skipped remain unresolved, never REFUTED", async () => {
+test("over-cap findings remain unresolved, never REFUTED", async () => {
   const core = await loadCore();
   const { repo, base, head } = await setupDiff();
   const mk = (id, n) => finding({
@@ -209,7 +217,7 @@ test("over-cap and skipped remain unresolved, never REFUTED", async () => {
   )));
   const over = result.verification.findings.filter((f) => f.acceptance === "over-cap");
   assert.equal(over.length, 2);
-  assert.equal(over.every((f) => f.claimed !== "REFUTED" && f.officialStatus !== "refuted"), true);
+  assert.equal(over.every((f) => f.claimed === null && f.officialStatus === "unresolved"), true);
   assert.equal(result.passed, false);
 });
 

@@ -46,3 +46,60 @@ for (const rating of ['Revert this.', undefined]) {
     assert.match(result.semanticErrors.join('\n'), /rating/i);
   });
 }
+
+function notApplicable() {
+  const r = gateReport('code-review');
+  r.assessment.scores[1] = { dimension: 'Security', na: true, reason: 'no changed security behavior' };
+  for (const s of r.assessment.scores.filter(s => !s.na)) s.weighted = s.score * s.weight / 0.85;
+  return r;
+}
+function incomplete() {
+  const r = gateReport('code-review', { verdict: 'INCONCLUSIVE', assessment: { finalScore: null } });
+  r.assessment.scores[1] = { dimension: 'Security', unknown: true, reason: 'necessary threat model unavailable' };
+  return r;
+}
+for (const [name, base, mutate, errors] of [
+  ['N/A needs reason', notApplicable, r => delete r.assessment.scores[1].reason, ['Security missing reason']],
+  ['UNKNOWN needs reason', incomplete, r => delete r.assessment.scores[1].reason, ['Security missing reason']],
+  ['score and N/A are exclusive', notApplicable, r => r.assessment.scores[1].score = 9, ['Security requires exactly one of score, N/A or UNKNOWN']],
+  ['rubric weight is fixed', () => gateReport('code-review'), r => r.assessment.scores[0].weight = 0.3, ['Correctness weight contradicts rubric']],
+  ['weighted contribution agrees', () => gateReport('code-review'), r => r.assessment.scores[0].weighted += 0.06, ['Correctness weighted contribution contradicts rubric']],
+  ['code has no E2E bonus', () => gateReport('code-review'), r => { r.assessment.e2eBonus = 0.5; r.assessment.finalScore = 9.5; }, ['E2E bonus contradicts rubric']],
+  ['duplicate dimension rejected', () => gateReport('code-review'), r => {
+    r.assessment.scores.push({ ...r.assessment.scores[0] });
+    for (const s of r.assessment.scores) s.weighted = s.score * s.weight / 1.25;
+  }, ['unknown or duplicate dimension Correctness']],
+]) {
+  test(name, () => {
+    const report = base();
+    assert.equal(evaluateGate('code-review', report).semanticOk, true, 'control packet must be valid');
+    mutate(report);
+    const result = evaluateGate('code-review', report);
+    assert.deepEqual(result.schemaErrors, []);
+    assert.deepEqual(result.semanticErrors, errors);
+    assert.equal(result.verdict, 'INVALID');
+  });
+}
+for (const delta of [0.05, 0.06]) {
+  test(`reported final score arithmetic tolerance: ${delta}`, () => {
+    const report = gateReport('code-review');
+    report.assessment.finalScore += delta;
+    const result = evaluateGate('code-review', report);
+    assert.equal(result.semanticOk, delta === 0.05);
+    if (delta === 0.06) assert.deepEqual(result.semanticErrors, ['finalScore 9.06 contradicts weighted scores (~9.000)']);
+    else assert.deepEqual(result.semanticErrors, []);
+  });
+}
+for (const [gate, values, rounded] of [
+  ['code-review', [7.4, 7.5, 7.4, 7.5, 7.5, 7.5], 7.5],
+  ['test-review', [7.7, 8, 8, 8, 8, 8], 8],
+]) {
+  test(`${gate} rounding cannot promote a below-threshold calculated score`, () => {
+    const report = scored(gate, values);
+    report.assessment.finalScore = rounded;
+    const result = evaluateGate(gate, report);
+    assert.deepEqual(result.semanticErrors, ['finalScore below threshold']);
+    assert.equal(result.verdict, 'INVALID');
+    assert.equal(result.raw.assessment.finalScore, rounded);
+  });
+}

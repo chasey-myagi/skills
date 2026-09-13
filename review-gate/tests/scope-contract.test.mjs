@@ -77,12 +77,7 @@ test('working-tree preserves index-only changes and detects index drift', async 
   assert.match(readFileSync(result.artifacts.diffPath, 'utf8'), /INDEX_ONLY_DEFECT/);
   assert.equal(readFileSync(join(result.artifacts.runDir, 'snapshot-index/src/app.js'), 'utf8'), 'INDEX_ONLY_DEFECT\n');
   assert.ok(agent.calls.every(c => c.prompt.includes('INDEX_ONLY_DEFECT')));
-  const drifted = await runReviewGate({ repoDir: repo, mode: 'working-tree' }, rt(async (_prompt, opts) => {
-    gitC(repo, ['add', 'src/app.js']);
-    return gateReport(opts.label);
-  }));
-  assert.equal(drifted.passed, false);
-  assert.equal(drifted.drift.detected, true);
+
 });
 
 test('advancing a branch does not change the reviewed immutable commit', async () => {
@@ -98,3 +93,40 @@ test('advancing a branch does not change the reviewed immutable commit', async (
   assert.equal(result.scope.head, frozen);
   assert.equal(result.passed, true);
 });
+
+test('index-only drift is detected through hashes while the working change remains nonempty', async () => {
+  const repo = makeRepo();
+  commitRel(repo, 'file.js', 'A\n', 'base');
+  writeRel(repo, 'file.js', 'B\n'); gitC(repo, ['add', 'file.js']);
+  writeRel(repo, 'file.js', 'C\n');
+  const result = await runReviewGate({ repoDir: repo, mode: 'working-tree' }, rt(async (_prompt, opts) => {
+    writeRel(repo, 'file.js', 'D\n'); gitC(repo, ['add', 'file.js']);
+    writeRel(repo, 'file.js', 'C\n');
+    return gateReport(opts.label);
+  }));
+  for (const [dir, bytes] of [['snapshot-base', 'A\n'], ['snapshot-index', 'B\n'], ['snapshot', 'C\n']]) {
+    assert.equal(readFileSync(join(result.artifacts.runDir, dir, 'file.js'), 'utf8'), bytes);
+  }
+  const diff = readFileSync(result.artifacts.diffPath, 'utf8');
+  assert.match(diff, /-A\n\+B/); assert.match(diff, /-B\n\+C/);
+  assert.equal(readFileSync(join(repo, 'file.js'), 'utf8'), 'C\n');
+  assert.equal(result.overall, 'INVALID');
+  assert.match(result.drift.details, /source scope, contents, policy or refs changed/);
+  assert.doesNotMatch(result.drift.details, /no longer readable|empty target/);
+});
+for (const dir of ['snapshot-base', 'snapshot-index']) {
+  test(`tampering only with ${dir} invalidates the otherwise unchanged working review`, async () => {
+    const repo = makeRepo();
+    commitRel(repo, 'file.js', 'A\n', 'base');
+    writeRel(repo, 'file.js', 'B\n'); gitC(repo, ['add', 'file.js']);
+    writeRel(repo, 'file.js', 'C\n');
+    const result = await runReviewGate({ repoDir: repo, mode: 'working-tree' }, rt(async (prompt, opts) => {
+      const snapshot = /^SNAPSHOT_DIR: (.+)$/m.exec(prompt)[1];
+      writeRel(join(snapshot, '..', dir), 'file.js', 'tampered\n');
+      return gateReport(opts.label);
+    }));
+    assert.equal(result.overall, 'INVALID');
+    assert.match(result.drift.details, /snapshot hash changed file.js/);
+    assert.doesNotMatch(result.drift.details, /source scope|no longer readable/);
+  });
+}

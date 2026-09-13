@@ -217,3 +217,15 @@ test('missing evidence is rejected once, without duplicate diagnostic entries', 
   assert.equal(result.semanticErrors.length, 1);
   assert.match(result.semanticErrors[0], /evidence/);
 });
+
+test('a score-only FAIL is visible in the fix queue and gate blocking reasons', async () => {
+  const report = gateReport('test-review', { verdict: 'FAIL', assessment: {
+    scores: scoresFor('test-review', 7), finalScore: 7, blockingReasons: ['Boundary coverage lacks the overflow case'],
+  } });
+  const result = await runReviewGate(changed(), rt(scriptedAgent({ 'test-review': report })));
+  assert.equal(result.overall, 'FAIL');
+  assert.deepEqual(result.fixQueue, [{ id: 'gate:test-review', gate: 'test-review', title: 'Boundary coverage lacks the overflow case', verification: 'requires-review-followup' }]);
+  const md = readFileSync(result.artifacts.handoffMd, 'utf8');
+  assert.match(section(md, 'Gate-level blocking reasons'), /test-review: Boundary coverage lacks the overflow case/);
+  assert.match(section(md, 'Fix queue'), /gate:test-review Boundary coverage lacks the overflow case/);
+});

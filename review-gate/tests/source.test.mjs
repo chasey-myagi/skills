@@ -81,21 +81,15 @@ test("working-tree captures staged, unstaged, and new files including paths with
   commitRel(repo, "keep.js", "keep\n", "init");
   commitRel(repo, "tracked.js", "TRACKED-BASE\n", "tracked");
   writeRel(repo, "tracked.js", "UNSTAGED-TRACKED\n");
-  writeRel(repo, "staged.js", "STAGED\n");
+  writeRel(repo, "staged.js", "STAGED_ONLY_SENTINEL\n");
   gitC(repo, ["add", "staged.js"]);
   writeRel(repo, "unstaged.js", "UNTRACKED-NEW\n");
   writeRel(repo, "file with spaces.txt", "SPACED\n");
 
-  const agent = async (prompt) => {
-    assert.match(prompt, /STAGED/);
-    assert.match(prompt, /UNSTAGED-TRACKED/);
-    assert.match(prompt, /UNTRACKED-NEW/);
-    assert.match(prompt, /SPACED/);
-    assert.match(prompt, /file with spaces\.txt/);
-    assert.match(prompt, /tracked\.js/);
-    return (await import("./helpers.mjs")).gateReport(
-      /GATE_ID:\s*(\S+)/.exec(prompt)[1],
-    );
+  const prompts = [];
+  const agent = async (prompt, opts) => {
+    prompts.push(prompt);
+    return (await import("./helpers.mjs")).gateReport(opts.label);
   };
 
   const result = await core.runReviewGate({
@@ -109,6 +103,13 @@ test("working-tree captures staged, unstaged, and new files including paths with
     log() {},
   });
 
+  assertOfficialPass(result);
+  assert.equal(prompts.length, 3);
+  for (const prompt of prompts) {
+    for (const sentinel of ["STAGED_ONLY_SENTINEL", "UNSTAGED-TRACKED", "UNTRACKED-NEW", "SPACED"]) assert.ok(prompt.includes(sentinel), sentinel);
+  }
+  assert.equal(readFileSync(join(result.artifacts.snapshotDir, "staged.js"), "utf8"), "STAGED_ONLY_SENTINEL\n");
+  assert.equal(readFileSync(join(result.artifacts.runDir, "snapshot-index/staged.js"), "utf8"), "STAGED_ONLY_SENTINEL\n");
   assert.ok(result.scope.paths.includes("staged.js"));
   assert.ok(result.scope.paths.includes("tracked.js"));
   assert.ok(result.scope.paths.includes("unstaged.js"));

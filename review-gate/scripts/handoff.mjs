@@ -46,6 +46,9 @@ export function renderHandoff(result) {
     }).join("\n")
     : "(none)");
 
+  sections.push("## Gate-level blocking reasons");
+  sections.push(lines((result.gateBlockingReasons || []).flatMap(g => g.reasons.map(reason => `${g.gate}: ${reason}`))));
+
   sections.push("## Advisory findings");
   sections.push(advisory.length
     ? advisory.map((f) => `- ${f.id} ${f.title} (${f.path})`).join("\n")

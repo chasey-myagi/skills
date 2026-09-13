@@ -251,6 +251,7 @@ function scoreIssues(gate, report) {
   if (gate === "test-review" ? ![-0.5, 0, 0.5].includes(bonus) : bonus !== 0) {
     errors.push("E2E bonus contradicts rubric");
   }
+  let calculated = null;
   const incomplete = unknown || scored.length === 0 || missing.length > 0;
   if (incomplete) {
     if (final !== null) errors.push("UNKNOWN or all N/A requires null finalScore");
@@ -258,7 +259,7 @@ function scoreIssues(gate, report) {
   } else {
     if (!Number.isFinite(final)) errors.push("finalScore must be a finite number");
     const totalWeight = scored.reduce((sum, item) => sum + weights[item.dimension], 0);
-    const calculated = scored.reduce((sum, item) => sum + item.score * weights[item.dimension], 0) / totalWeight + bonus;
+    calculated = scored.reduce((sum, item) => sum + item.score * weights[item.dimension], 0) / totalWeight + bonus;
     if (Number.isFinite(final) && Math.abs(final - calculated) > 0.051) {
       errors.push(`finalScore ${final} contradicts weighted scores (~${calculated.toFixed(3)})`);
     }
@@ -272,7 +273,7 @@ function scoreIssues(gate, report) {
   if (report.verdict === "PASS") {
     const threshold = gate === "test-review" ? TEST_THRESH : CODE_THRESH;
     if (scored.some(item => item.score < threshold.perDim)) errors.push("applicable dimension below threshold");
-    if (final < threshold.final) errors.push("finalScore below threshold");
+    if (final < threshold.final || (calculated !== null && calculated + 1e-10 < threshold.final)) errors.push("finalScore below threshold");
   }
   return errors;
 }
