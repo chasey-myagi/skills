@@ -88,6 +88,12 @@ test('diff policy includes frozen relevant guidelines and excludes dirty or sibl
   const agent = scriptedAgent({});
   const result = await runReviewGate({ repoDir, mode: 'diff', base, head, paths: ['src/app.js'] }, rt(agent));
   assert.equal(result.overall, 'PASS');
+  assert.deepEqual(result.scope.paths, ['src/app.js']);
+  const manifest = JSON.parse(readFileSync(result.scope.manifestPath));
+  assert.deepEqual(manifest.files.map(file => file.path), ['src/app.js']);
+  for (const policy of ['AGENTS.md', 'REVIEW_GUIDELINES.md', 'src/REVIEW_GUIDELINES.md', 'other/AGENTS.md']) {
+    assert.equal(existsSync(join(result.scope.snapshotDir, policy)), false);
+  }
   assert.deepEqual(result.scope.policy.map(p => ({ path: p.path, origin: p.origin })), [
     { path: 'AGENTS.md', origin: 'head' },
     { path: 'REVIEW_GUIDELINES.md', origin: 'head' },
