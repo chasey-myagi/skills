@@ -15,7 +15,7 @@ export function inspectIntegrity(worktree, buildDir, head) {
   const tamper = [];
   if (resolveCommit(worktree, "HEAD") !== base) tamper.push("HEAD changed from frozen source");
   const existing = new Set(splitZ(git(worktree, ["ls-tree", "-r", "-z", "--name-only", base]).stdout));
-  const changed = splitZ(git(worktree, ["diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", base]).stdout);
+  const changed = splitZ(git(worktree, ["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", base]).stdout);
   const fresh = splitZ(git(worktree, ["ls-files", "--others", "-z", "--exclude-standard"]).stdout);
   const ignored = splitZ(git(worktree, ["ls-files", "--others", "-i", "-z", "--exclude-standard"]).stdout);
   const newTests = [];

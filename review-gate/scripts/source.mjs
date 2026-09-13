@@ -68,7 +68,7 @@ export function physicalPath(path) {
   for (;;) {
     try { lstatSync(ancestor); break; }
     catch (err) {
-      if (err.code !== "ENOENT") throw err;
+      if (err.code !== "ENOENT" && err.code !== "ENOTDIR") throw err;
       if (dirname(ancestor) === ancestor) throw err;
       suffix.unshift(basename(ancestor));
       ancestor = dirname(ancestor);
@@ -88,7 +88,18 @@ export function resolveInRepo(repoRoot, rel, { mustExist = false, follow = true 
   const abs = resolve(repoRoot, safe);
   if (!pathInsideRepo(repoRoot, abs)) throw new CaptureError(`symlink/path escapes source: ${rel}`);
   if (mustExist && !existsSync(abs)) throw new CaptureError(`path not found: ${rel}`);
-  if (!follow && existsSync(abs) && lstatSync(abs).isSymbolicLink()) throw new CaptureError(`symlink rejected: ${rel}`);
+  if (!follow) {
+    let current = repoRoot;
+    for (const part of safe.split("/")) {
+      current = join(current, part);
+      try {
+        if (lstatSync(current).isSymbolicLink()) throw new CaptureError(`symlink rejected: ${rel}`);
+      } catch (err) {
+        if (err.code === "ENOENT" || err.code === "ENOTDIR") break;
+        throw err;
+      }
+    }
+  }
   return { rel: safe, abs };
 }
 
@@ -106,11 +117,17 @@ function blobAt(repo, sha, rel) {
   const entry = git(repo, ["--literal-pathspecs", "ls-tree", "-z", sha, "--", rel]).stdout.toString();
   if (!entry) return null;
   const header = entry.slice(0, entry.indexOf("\t"));
+  // A file replaced by a directory has no blob at this side of the delta.
+  if (header.split(" ")[1] === "tree") return null;
   if (header.split(" ")[1] !== "blob") throw new CaptureError(`unsupported non-blob source ${rel}`);
   return git(repo, ["cat-file", "blob", `${sha}:${rel}`]).stdout;
 }
 
 function indexBlob(repo, rel) {
+  const entry = git(repo, ["--literal-pathspecs", "ls-files", "--stage", "-z", "--", rel]).stdout.toString();
+  if (entry.startsWith("160000 ") && entry.slice(entry.indexOf("\t") + 1).split("\0")[0] === rel) {
+    throw new CaptureError(`not a regular file: ${rel} (gitlink)`);
+  }
   const r = git(repo, ["show", `:${rel}`], { allowFail: true });
   if (r.status !== 0) return null;
   return r.stdout;
@@ -216,14 +233,17 @@ export function captureTarget(args, repo) {
     const all = [...new Set([...staged, ...unstaged, ...untracked])];
     const selected = intersect(all, filter);
     for (const path of selected.sort()) {
-      resolveInRepo(repo, path, { follow: true });
+      resolveInRepo(repo, path, { follow: false });
       const abs = resolve(repo, path);
       const st = existsSync(abs) ? lstatSync(abs) : null;
       const buf = st?.isFile() ? readFileSync(abs) : null;
-      if (st && !st.isFile()) throw new CaptureError(`not a regular file: ${path}`);
+      const baseBytes = headSha ? blobAt(repo, headSha, path) : null;
+      const indexBytes = indexBlob(repo, path);
+      const replacedFile = st?.isDirectory() && (baseBytes !== null || indexBytes !== null);
+      if (st && !st.isFile() && !replacedFile) throw new CaptureError(`not a regular file: ${path}`);
       const record = fileRecord(path, buf, "modified");
-      record.baseBytes = headSha ? blobAt(repo, headSha, path) : null;
-      record.indexBytes = indexBlob(repo, path);
+      record.baseBytes = baseBytes;
+      record.indexBytes = indexBytes;
       record.indexHash = record.indexBytes === null ? "deleted" : sha256(record.indexBytes);
       record.status = buf === null ? "deleted" : record.baseBytes === null ? "added" : "modified";
       files.push(record);
@@ -231,20 +251,26 @@ export function captureTarget(args, repo) {
   } else if (mode === "snapshot") {
     if (!filter || !filter.length) throw new CaptureError("snapshot requires paths");
     const expanded = [];
+    const gitlinks = new Set(splitZ(git(repo, ["ls-files", "--stage", "-z"]).stdout)
+      .filter(entry => entry.startsWith("160000 ")).map(entry => entry.slice(entry.indexOf("\t") + 1)));
     for (const p of filter) {
-      const { abs, rel } = resolveInRepo(repo, p, { mustExist: true, follow: true });
+      if ([...gitlinks].some(link => p === link || p.startsWith(link + "/"))) throw new CaptureError(`not a regular file: ${p} (gitlink)`);
+      const { abs, rel } = resolveInRepo(repo, p, { mustExist: true, follow: false });
       const st = lstatSync(abs);
-      const realSt = st.isSymbolicLink() ? lstatSync(realpathSync(abs)) : st;
-      if (realSt.isDirectory()) {
+      if (st.isDirectory()) {
         // Directory scope follows Git's tracked + non-ignored working files.
         // An explicitly named ignored file remains an intentional opt-in.
         const names = splitZ(git(repo, ["--literal-pathspecs", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", rel]).stdout);
         for (const name of names) {
+          if (gitlinks.has(name)) throw new CaptureError(`not a regular file: ${name} (gitlink)`);
           const checked = resolveInRepo(repo, name, { follow: false });
-          if (existsSync(checked.abs) && lstatSync(checked.abs).isFile()) expanded.push(checked.rel);
+          if (!existsSync(checked.abs)) continue;
+          if (!lstatSync(checked.abs).isFile()) throw new CaptureError(`not a regular file: ${checked.rel}`);
+          expanded.push(checked.rel);
         }
       }
-      else expanded.push(rel);
+      else if (st.isFile()) expanded.push(rel);
+      else throw new CaptureError(`not a regular file: ${rel}`);
     }
     const selected = [...new Set(expanded)].sort();
     for (const path of selected) {
@@ -266,7 +292,7 @@ export function captureTarget(args, repo) {
       return { origin: "head", hash: rec.hash, text: rec.text, binary: rec.binary };
     }
     try {
-      const { abs } = resolveInRepo(repo, rel, { mustExist: true, follow: true });
+      const { abs } = resolveInRepo(repo, rel, { mustExist: true, follow: false });
       const rec = fileRecord(rel, readFileSync(abs), "policy");
       return { origin: mode === "snapshot" ? "snapshot" : "worktree", hash: rec.hash, text: rec.text, binary: rec.binary };
     } catch (err) {
@@ -342,17 +368,17 @@ export function detectDrift(args, repo, captured, snapshotDir) {
     }
   }
   for (const [root, expected] of sets) {
-  try {
-    const actual = [];
-    if (existsSync(root)) walkDir(root, ".", actual);
-    if (JSON.stringify(actual.sort()) !== JSON.stringify(expected.map(f => f.path).sort())) details.push("snapshot file set changed");
-    for (const f of expected) {
-      const { abs } = resolveInRepo(root, f.path, { mustExist: true, follow: false });
-      if (sha256(readFileSync(abs)) !== f.hash) details.push(`snapshot hash changed ${f.path}`);
+    try {
+      const actual = [];
+      if (existsSync(root)) walkDir(root, ".", actual);
+      if (JSON.stringify(actual.sort()) !== JSON.stringify(expected.map(f => f.path).sort())) details.push("snapshot file set changed");
+      for (const f of expected) {
+        const { abs } = resolveInRepo(root, f.path, { mustExist: true, follow: false });
+        if (sha256(readFileSync(abs)) !== f.hash) details.push(`snapshot hash changed ${f.path}`);
+      }
+    } catch (err) {
+      details.push(`snapshot integrity failure: ${err.message}`);
     }
-  } catch (err) {
-    details.push(`snapshot integrity failure: ${err.message}`);
-  }
   }
   return { detected: details.length > 0, details: details.length ? details.join("; ") : null };
 }

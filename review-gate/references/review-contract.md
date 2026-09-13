@@ -30,7 +30,7 @@ After accepted refutation, retain the original report and attach the accepted ev
 
 ## Handoff
 
-The saved structured result is the source for the handoff. Preserve the scope, original reports, finding IDs and source gates, priority and blocking decisions, evidence locations, candidate proof status, constraints and unrun checks. Separate actionable fixes, optional improvements, informational callouts and matters requiring human judgment. Lack of a repro harness does not make an ordinary test gap or structural fix require user approval. Invalid gate reports are retained for correction/rerun and cannot dispatch write-capable verification.
+The saved structured result is the source for the handoff. Preserve the scope, original reports, finding IDs and source gates, priority and blocking decisions, evidence locations, candidate proof status, constraints and unrun checks. Separate actionable fixes, optional improvements, informational callouts and matters requiring human judgment. Lack of a repro harness does not make an ordinary test gap or structural fix require user approval. Invalid gate reports returned by the host are retained for correction/rerun and cannot dispatch write-capable verification. If the host rejects output before returning it, no raw report is available. In particular, workflow-run returns null after exhausting schema retries; review-gate records incomplete execution and INVALID, and the parent needs host diagnostics to rerun.
 
 An authorized implementation task continues from that handoff without asking for the same permission again. A review-only task does not become an implementation task because a fix queue exists. CI, acceptance, review and permission to publish retain their own outcomes.
 
