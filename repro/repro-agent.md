@@ -9,12 +9,12 @@
 3. **写不红是合法且有价值的结论**：REFUTED / NOT-TESTABLE 不是交不了差。误报过滤的价值不低于确认——不要为了交出红灯硬凹。
 4. **测行为不测实现**（tdd 铁律）：测试走公共接口、断言 spec 期望的正确行为。禁止 mock 内部协作者、测私有函数、断言调用次数、为测试开 pub 洞。写不出公共接口层面的红灯 → 判 NOT-TESTABLE(non-behavioral)，这不是写实现级测试的理由——修复往往伴随重构，钉死内部的测试会反过来冤枉 fix。
 5. **写权限边界**：你只允许 (a) 在约定测试目录**新增**测试文件，(b) 运行测试。绝不修改实现代码、既有测试、runner/build/CI 配置。发现「必须改代码才能观测」→ 记 NOT-TESTABLE(needs-code-change) 说明，不要动手。主控会 diff 核查你的改动，越界整轮作废。
-6. **源码目标与 session root 分开**：按输入的绝对路径定位源码，Git 用 `git -C <source>`，测试用显式项目/manifest 入口；不改父任务要求的 session root。开工前记录源码 HEAD、staged/unstaged 及新文件基线，只在约定目录新增。build 输出使用该源码目标独立的绝对路径（如 `CARGO_TARGET_DIR=<source>/target`），不把 session 下的相对 `./target` 当隔离目录。继承 NO COMMIT、禁止外部写入等限制，不扩大权限。
+6. **源码目标与 session root 分开**：按输入的绝对路径定位源码，Git 用 `git -C <source>`，测试用显式项目/manifest 入口；不改父任务要求的 session root。开工前记录源码 HEAD、staged/unstaged 及新文件基线，只在约定目录新增。build 输出使用该源码目标独立的绝对路径（如 `CARGO_TARGET_DIR=<owned-run-dir>/build/<finding-id>`），不把 session 下的相对 `./target` 当隔离目录。继承 NO COMMIT、禁止外部写入等限制，不扩大权限。
 
 ## 工作流程
 
 1. **读 finding**：定位 file:line，理解声称的行为偏差（预期 X，实际 Y）。
-2. **找 oracle**（期望值的出处），优先级：spec / 设计文档 > 邻近既有测试反映的契约 > 文档注释 > 语言/库的标准语义。报告里必须引用出处。找不到任何独立出处、只能拿 finding 自己当标尺 → 这是循环论证的风险信号，如实写进报告并降低结论置信度。
+2. **找 oracle**（期望值的出处），优先级：spec / 设计文档 > 邻近既有测试反映的契约 > 文档注释 > 语言/库的标准语义。报告里必须引用出处。找不到任何独立出处、只能拿 finding 自己当标尺 → 保留待确认，不得判 CONFIRMED 或 REFUTED；说明缺失的依据交父任务处理。
 3. **预注册失败签名**：写测试**之前**，先写下你预测的实际观测值（"expected X, got Y" 里的那个 Y）。这一步防两种事故：你对 bug 的理解有误（跑出来的 Y 和预测对不上），以及把无关的意外失败当成确认。
 4. **写测试**：一个**红灯测试**（断言 spec 期望的正确行为，当前代码上应失败）+ 同文件一个 **control test**（相同 setup 的相邻合法场景，当前代码上应通过）。control 排除「环境坏了所以红」的假确认。
 5. **运行**：红灯测试连跑 3 次；control 与其余 suite 至少跑 1 次。observed 与 predicted 对不上 → 回到第 1 步重新分析，不要将错就错。
@@ -61,6 +61,8 @@
 suite 本身编译不过 / 跑不动、依赖缺失、环境损坏。附真实错误输出。与 NOT-TESTABLE 严格区分：BLOCKED 是「修好环境要重试」，NOT-TESTABLE 是「本质如此」。
 
 ## 测试文件约定
+
+保留输入 finding ID、来源 gate 和源码 scope ID。测试、完整内容哈希、命令、输出与 worktree 路径都交给主控；不要自动删除临时 worktree。父任务的机械验收完成前，你的判定只是候选证据，不能改写各门结论。组合工作流指定 JSON schema 时遵守该格式，并保留下列报告要求的信息。
 
 - 位置：`tests/repro/`（或语言惯例等价：Rust `tests/repro_*.rs`、Python `tests/repro/test_*.py`、JS/TS `tests/repro/*.test.*`）
 - 命名：`repro_<finding-id>_<slug>`。slug 描述**被守护的行为**（如 `access_owner_protection`、`budget_gate_order`），不写评审过程——round / review / findings 这类过程词禁止进文件名。半年后维护者要能从文件名看出这个测试守什么行为，而不是它诞生于第几轮评审。

@@ -1,0 +1,345 @@
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { sha256 } from "./schema.mjs";
+
+const POLICY_NAMES = ["AGENTS.md", "REVIEW_GUIDELINES.md"];
+
+export class CaptureError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = "CaptureError";
+  }
+}
+
+export function git(repo, args, opts = {}) {
+  const r = spawnSync("git", ["-C", repo, ...args], {
+    encoding: opts.encoding ?? "buffer",
+    maxBuffer: 50 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (r.error) throw new CaptureError(`git ${args[0]} failed: ${r.error.message}`);
+  if (r.status !== 0 && !opts.allowFail) {
+    const err = (opts.encoding === "utf8" ? r.stderr : r.stderr?.toString?.()) || "";
+    throw new CaptureError(`git ${args.join(" ")} failed: ${err.trim() || `exit ${r.status}`}`);
+  }
+  return r;
+}
+
+function splitZ(buf) {
+  const s = Buffer.isBuffer(buf) ? buf.toString("utf8") : String(buf || "");
+  return s.split("\0").filter((x) => x.length > 0);
+}
+
+export function assertSafeRef(ref) {
+  if (typeof ref !== "string" || !ref || ref.includes("\0") || ref.startsWith("-")) {
+    throw new CaptureError(`invalid ref ${JSON.stringify(ref)}`);
+  }
+  return ref;
+}
+
+export function assertRelPath(p) {
+  if (typeof p !== "string" || !p || p.includes("\0")) {
+    throw new CaptureError("invalid path");
+  }
+  if (p.includes("\\")) throw new CaptureError("backslash paths are unsupported; use repository-relative paths");
+  const norm = p;
+  if (norm.startsWith("/") || /^[a-zA-Z]:/.test(norm)) {
+    throw new CaptureError(`absolute path rejected: ${p}`);
+  }
+  const parts = norm.split("/").filter((x) => x && x !== ".");
+  if (parts.some((x) => x === "..")) throw new CaptureError(`path traversal rejected: ${p}`);
+  if (parts.includes(".git")) throw new CaptureError("Git metadata is not review source");
+  return parts.join("/") || ".";
+}
+
+// Resolve the nearest existing ancestor too, so directory symlinks cannot bypass boundaries.
+export function physicalPath(path) {
+  let ancestor = resolve(path);
+  const suffix = [];
+  for (;;) {
+    try { lstatSync(ancestor); break; }
+    catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      if (dirname(ancestor) === ancestor) throw err;
+      suffix.unshift(basename(ancestor));
+      ancestor = dirname(ancestor);
+    }
+  }
+  return resolve(realpathSync(ancestor), ...suffix);
+}
+
+export function pathInsideRepo(repoRoot, absPath) {
+  const root = realpathSync(repoRoot);
+  const target = physicalPath(absPath);
+  return target === root || target.startsWith(root + sep);
+}
+
+export function resolveInRepo(repoRoot, rel, { mustExist = false, follow = true } = {}) {
+  const safe = assertRelPath(rel);
+  const abs = resolve(repoRoot, safe);
+  if (!pathInsideRepo(repoRoot, abs)) throw new CaptureError(`symlink/path escapes source: ${rel}`);
+  if (mustExist && !existsSync(abs)) throw new CaptureError(`path not found: ${rel}`);
+  if (!follow && existsSync(abs) && lstatSync(abs).isSymbolicLink()) throw new CaptureError(`symlink rejected: ${rel}`);
+  return { rel: safe, abs };
+}
+
+export function resolveCommit(repo, ref) {
+  assertSafeRef(ref);
+  try {
+    const r = git(repo, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], { encoding: "utf8" });
+    return r.stdout.trim();
+  } catch (err) {
+    throw new CaptureError(`invalid ref '${ref}': ${err.message}`, { cause: err });
+  }
+}
+
+function blobAt(repo, sha, rel) {
+  const entry = git(repo, ["--literal-pathspecs", "ls-tree", "-z", sha, "--", rel]).stdout.toString();
+  if (!entry) return null;
+  const header = entry.slice(0, entry.indexOf("\t"));
+  if (header.split(" ")[1] !== "blob") throw new CaptureError(`unsupported non-blob source ${rel}`);
+  return git(repo, ["cat-file", "blob", `${sha}:${rel}`]).stdout;
+}
+
+function indexBlob(repo, rel) {
+  const r = git(repo, ["show", `:${rel}`], { allowFail: true });
+  if (r.status !== 0) return null;
+  return r.stdout;
+}
+
+function asText(buf) {
+  if (buf == null) return null;
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  if (b.includes(0)) return { binary: true, bytes: b };
+  const text = b.toString("utf8");
+  return { binary: false, bytes: b, text };
+}
+
+function fileRecord(path, buf, status) {
+  const parsed = asText(buf);
+  const hash = buf == null ? "deleted" : sha256(parsed.bytes);
+  return {
+    path,
+    status,
+    hash,
+    binary: parsed?.binary || false,
+    text: parsed?.binary ? null : parsed?.text ?? null,
+    bytes: parsed?.bytes ?? null,
+  };
+}
+
+function intersect(paths, filter) {
+  if (!filter) return paths;
+  const want = new Set(filter.map((p) => assertRelPath(p)));
+  return paths.filter((p) => [...want].some(q => q === "." || p === q || p.startsWith(q + "/")));
+}
+
+function collectPolicy(repo, changed, read) {
+  const dirs = new Set([""]);
+  for (const p of changed) {
+    const parts = p.split("/");
+    let acc = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      acc = acc ? `${acc}/${parts[i]}` : parts[i];
+      dirs.add(acc);
+    }
+  }
+  const policy = [];
+  for (const dir of [...dirs].sort()) {
+    for (const name of POLICY_NAMES) {
+      const rel = dir ? `${dir}/${name}` : name;
+      const got = read(rel);
+      if (got) policy.push({ path: rel, ...got });
+    }
+  }
+  return policy;
+}
+
+function walkDir(repo, rel, out) {
+  const { abs } = resolveInRepo(repo, rel || ".", { mustExist: true });
+  const st = lstatSync(abs);
+  if (st.isSymbolicLink()) throw new CaptureError(`snapshot directory traversal does not follow symlinks: ${rel}`);
+  if (st.isFile()) {
+    out.push(rel);
+    return;
+  }
+  if (!st.isDirectory()) throw new CaptureError(`not a regular file or directory: ${rel}`);
+  for (const name of readdirSync(abs)) {
+    if (name === ".git") continue;
+    const child = rel && rel !== "." ? `${rel}/${name}` : name;
+    walkDir(repo, child, out);
+  }
+}
+
+export function captureTarget(args, repo) {
+  const mode = args.mode;
+  const filter = args.paths ? args.paths.map(assertRelPath) : null;
+  let baseSha = null;
+  let headSha = null;
+  let mergeBase = null;
+  let files = [];
+
+  if (mode === "diff") {
+    baseSha = resolveCommit(repo, args.base);
+    headSha = resolveCommit(repo, args.head);
+    mergeBase = git(repo, ["merge-base", baseSha, headSha], { encoding: "utf8" }).stdout.trim();
+    const names = splitZ(git(repo, ["diff", "-z", "--name-only", mergeBase, headSha]).stdout);
+    const selected = intersect(names.map(assertRelPath), filter);
+    for (const path of selected.sort()) {
+      const buf = blobAt(repo, headSha, path);
+      files.push(fileRecord(path, buf, buf ? "modified" : "deleted"));
+    }
+  } else if (mode === "working-tree") {
+    const current = git(repo, ["rev-parse", "--verify", "HEAD"], { encoding: "utf8", allowFail: true });
+    headSha = current.status === 0 ? current.stdout.trim() : null;
+    baseSha = headSha;
+    const staged = splitZ(git(repo, ["diff", "-z", "--name-only", "--cached"]).stdout).map(assertRelPath);
+    const unstaged = splitZ(git(repo, ["diff", "-z", "--name-only"]).stdout).map(assertRelPath);
+    const untracked = splitZ(git(repo, ["ls-files", "-z", "--others", "--exclude-standard"]).stdout).map(assertRelPath);
+    const stagedOnly = new Set(staged.filter((p) => !unstaged.includes(p) && !untracked.includes(p)));
+    const all = [...new Set([...staged, ...unstaged, ...untracked])];
+    const selected = intersect(all, filter);
+    for (const path of selected.sort()) {
+      resolveInRepo(repo, path, { follow: true });
+      const abs = resolve(repo, path);
+      let buf = null;
+      let status = "modified";
+      if (untracked.includes(path) || unstaged.includes(path)) {
+        if (existsSync(abs) && lstatSync(abs).isFile() || existsSync(abs) && lstatSync(abs).isSymbolicLink()) {
+          buf = readFileSync(abs);
+          status = untracked.includes(path) ? "added" : "modified";
+        } else {
+          status = "deleted";
+        }
+      } else if (stagedOnly.has(path)) {
+        buf = indexBlob(repo, path);
+        status = buf ? "added" : "deleted";
+      }
+      const record = fileRecord(path, buf, status);
+      record.baseBytes = headSha ? blobAt(repo, headSha, path) : null;
+      files.push(record);
+    }
+  } else if (mode === "snapshot") {
+    if (!filter || !filter.length) throw new CaptureError("snapshot requires paths");
+    const expanded = [];
+    for (const p of filter) {
+      const { abs, rel } = resolveInRepo(repo, p, { mustExist: true, follow: true });
+      const st = lstatSync(abs);
+      const realSt = st.isSymbolicLink() ? lstatSync(realpathSync(abs)) : st;
+      if (realSt.isDirectory()) walkDir(repo, rel, expanded);
+      else expanded.push(rel);
+    }
+    const selected = [...new Set(expanded)].sort();
+    for (const path of selected) {
+      const abs = resolve(repo, path);
+      const buf = readFileSync(abs);
+      files.push(fileRecord(path, buf, "snapshot"));
+    }
+  } else {
+    throw new CaptureError(`unknown mode '${mode}'`);
+  }
+
+  if (!files.length) throw new CaptureError("empty target: no files to review");
+
+  const readPolicy = (rel) => {
+    if (mode === "diff") {
+      const buf = blobAt(repo, headSha, rel);
+      if (!buf) return null;
+      const rec = fileRecord(rel, buf, "policy");
+      return { origin: "head", hash: rec.hash, text: rec.text, binary: rec.binary };
+    }
+    try {
+      const { abs } = resolveInRepo(repo, rel, { mustExist: true, follow: true });
+      const rec = fileRecord(rel, readFileSync(abs), "policy");
+      return { origin: mode === "snapshot" ? "snapshot" : "worktree", hash: rec.hash, text: rec.text, binary: rec.binary };
+    } catch (err) {
+      if (!existsSync(resolve(repo, rel)) && /path not found/.test(err.message)) return null;
+      throw err;
+    }
+  };
+  const policy = collectPolicy(repo, files.map((f) => f.path), readPolicy);
+
+  const manifest = {
+    mode,
+    repo,
+    baseSha,
+    headSha,
+    mergeBase,
+    files: files.map(({ path, hash, status }) => ({ path, hash, status })),
+    policy: policy.map(({ path, hash, origin }) => ({ path, hash, origin })),
+  };
+  manifest.manifestHash = sha256(JSON.stringify(manifest));
+  return { ...manifest, fileContents: files, policyContents: policy, baseRef: args.base || null, headRef: args.head || null, pathFilter: filter };
+}
+
+export function writeSnapshot(runDir, captured) {
+  const snap = join(runDir, "snapshot");
+  mkdirSync(snap, { recursive: true });
+  for (const f of captured.fileContents) {
+    if (f.bytes == null) continue;
+    const dest = join(snap, f.path);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, f.bytes);
+  }
+  const meta = join(runDir, "meta");
+  mkdirSync(meta, { recursive: true });
+  const manifestPath = join(meta, "manifest.json");
+  const publicManifest = {
+    mode: captured.mode,
+    baseSha: captured.baseSha,
+    headSha: captured.headSha,
+    mergeBase: captured.mergeBase,
+    files: captured.files,
+    policy: captured.policy,
+    manifestHash: captured.manifestHash,
+  };
+  writeFileSync(manifestPath, JSON.stringify(publicManifest, null, 2) + "\n");
+  return { snapshotDir: snap, manifestPath };
+}
+
+export function detectDrift(args, repo, captured, snapshotDir) {
+  const details = [];
+  try {
+    const again = captureTarget(args, repo);
+    if (again.manifestHash !== captured.manifestHash) details.push("source scope, contents, policy or refs changed");
+  } catch (err) {
+    details.push(`source no longer readable at captured scope: ${err.message}`);
+  }
+  const expected = captured.fileContents.filter(f => f.bytes !== null);
+  try {
+    const actual = [];
+    walkDir(snapshotDir, ".", actual);
+    if (JSON.stringify(actual.sort()) !== JSON.stringify(expected.map(f => f.path).sort())) details.push("snapshot file set changed");
+    for (const f of expected) {
+      const { abs } = resolveInRepo(snapshotDir, f.path, { mustExist: true, follow: false });
+      if (sha256(readFileSync(abs)) !== f.hash) details.push(`snapshot hash changed ${f.path}`);
+    }
+  } catch (err) {
+    details.push(`snapshot integrity failure: ${err.message}`);
+  }
+  return { detected: details.length > 0, details: details.length ? details.join("; ") : null };
+}
+
+export function unifiedDiff(repo, captured) {
+  const paths = captured.files.map(f => f.path);
+  if (captured.mode === "diff") {
+    return git(repo, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", captured.mergeBase, captured.headSha, "--", ...paths], { encoding: "utf8" }).stdout;
+  }
+  if (captured.mode === "working-tree") {
+    // Both sides are captured bytes, including staged/new/deleted files; never diff the moving checkout.
+    return captured.fileContents.map(f => {
+      const before = asText(f.baseBytes);
+      return `### ${JSON.stringify(f.path)}\nBASE (${f.baseBytes === null ? "absent" : captured.headSha}):\n${before?.binary ? "(binary)" : before?.text ?? "(absent)"}\nWORKING SNAPSHOT:\n${f.binary ? "(binary)" : f.text ?? "(deleted)"}`;
+    }).join("\n\n");
+  }
+  return "Snapshot review: current files only; no delta attribution.";
+}

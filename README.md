@@ -12,7 +12,7 @@
 
 ```bash
 npx --yes skills@1.5.23 add /absolute/path/to/skills \
-  --global --skill issue-fix tdd code-review test-review linus-review repro workflow-run \
+  --global --skill issue-fix tdd code-review test-review linus-review repro workflow-run review-gate \
   --agent claude-code grok codex cursor --yes
 ```
 
@@ -40,6 +40,15 @@ npx --yes skills@1.5.23 add /absolute/path/to/skills \
 
 派一个**全新 agent** 当审查员：它不继承你的会话历史、不知道代码是谁写的——这正是在自己代码上自查最缺的东西。评分带置信度门（不确定不报）和 **N/A 维度**（不适用的维度诚实标 N/A、权重重分配，不硬凑分污染 PASS 结论）。
 
+- **review-gate** — 组合三门：固定已提交变更、未提交修改或文件快照的范围，保留结构化 findings 与知情提示，把各门的行为问题送到 repro，并生成可追踪的修复交接。需要同目录安装下列配套包；单独审一种角度仍用相应 review skill。
+
+  ```bash
+  npx skills@latest add chasey-myagi/skills \
+    --skill review-gate workflow-run code-review test-review linus-review repro
+  ```
+
+  范围、结果与运行方式见 [review-gate](review-gate/SKILL.md)。`scripts/run.mjs --print-workflow` 可生成原生 Workflow 宿主的薄入口，执行逻辑仍只有一份。
+
 - **code-review** — 代码评审：6 维加权评分 + 优先级问题清单 + PASS/FAIL 质量门。[看真实报告 →](code-review/examples/sample-pass.md)
 
   ```
@@ -62,13 +71,14 @@ npx --yes skills@1.5.23 add /absolute/path/to/skills \
 
 Review finding 是 LLM 意见，可能真实也可能虚假；dev-agent 修复时可能真验证也可能只是把测试跑绿。这一层把「意见」升格为「可执行证据」。
 
-- **repro** — 给每个可证伪的 Critical/Important finding 派独立 agent 写**红灯复现测试**：写得红 = finding 属实（CONFIRMED，红灯即修复的防篡改验收契约）；诚实尝试后反证为绿 = 误报（REFUTED，解除 blocking）；本质测不了 = NOT-TESTABLE（不可测 ≠ 不成立，保持 blocking 交人审）。窄门设计：架构/品味类不进队列，每轮 cap 3。[CONFIRMED →](repro/examples/sample-confirmed.md) · [REFUTED →](repro/examples/sample-refuted.md) · [NOT-TESTABLE →](repro/examples/sample-not-testable.md)
+- **repro** — 验证任一 review gate 的可证伪行为 finding。独立 agent 写**红灯复现测试**，父任务复跑并检查源码和测试完整性；验收后的 CONFIRMED 成为修复契约，REFUTED 在已测场景内撤回阻塞并交原 gate 复审。结构问题保留人审路径；未验证、超出每轮默认 cap 3 或环境阻塞不等于误报。[CONFIRMED →](repro/examples/sample-confirmed.md) · [REFUTED →](repro/examples/sample-refuted.md) · [NOT-TESTABLE →](repro/examples/sample-not-testable.md)
 
   ```
   npx skills@latest add chasey-myagi/skills/repro
   ```
 
 完整链路：`tdd → test-review → code-review →（FAIL 且要修：repro → fix → 机械验收 → code-review round 2）→ linus-review`。
+组合审查时三门并行，行为问题按需进入 repro，再进行授权范围内的修复、机械验收和相关 gate 复审。独立审查、测试通过、CI、产品验收和发布权限分别记录。Human Callouts 只用于知情，不改变审查结论或自动生成修复任务。
 修 bug 走 `issue-fix` 编排全程——它的阶段 3 / 5-6 / 7 分别落在 repro 协议、tdd 纪律和 review 质量门上。
 
 ## Anywhere

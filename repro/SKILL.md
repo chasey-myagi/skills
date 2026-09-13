@@ -4,7 +4,7 @@ description: >
   Turn review findings into executable evidence: dispatch an agent to write a red-light
   reproduction test per verifiable finding — red on current code proves the finding is real
   (false positives get REFUTED), and the same test becomes the tamper-proof acceptance contract
-  for the fix agent. Use after code-review returns FAIL with Critical/Important findings, before
+  for the fix agent. Use for behaviorally falsifiable findings from any review gate, before
   dispatching a fix, or standalone to pin down a reported bug. Triggers on: /repro, "复现这个 bug",
   "验证这些 findings", "这个 finding 是真的吗", "把问题钉成测试", "写个复现测试".
 ---
@@ -13,7 +13,7 @@ description: >
 
 Review finding 是 LLM 意见；红灯测试是可执行证据。本 skill 把「意见」升格为「证据」：给每个可测的 finding 派一个独立 agent 写**红灯复现测试**——断言 spec 期望的正确行为、在当前代码上真实失败。一份测试两次回报：
 
-1. **验真**：写得红 = finding 属实；诚实尝试后写不红 = 强误报信号（这是复读代码永远给不出的）。
+1. **验真**：符合证据标准的红灯证明所测偏差；反驳必须有期望行为绿灯与可红性证明，写不出红灯本身不能判误报。
 2. **验收**：修复后同一份测试必须不加修改地翻绿——fix agent 不能靠改测试、skip 测试或特判输入蒙混过关。翻绿后测试晋升为永久回归资产。
 
 你（主控 / session leader）负责路由、验收和握手；dispatch 的 agent 只负责写测试和跑测试。
@@ -22,10 +22,10 @@ Review finding 是 LLM 意见；红灯测试是可执行证据。本 skill 把�
 
 这是窄门，不是全量流程。路由由你做，agent 无权改判：
 
-- **severity**：Critical 全做；Important 由用户或你点名才做；Minor 永不。
+- **来源与严重度**：三门审查、用户和 issue 的行为性阻塞项使用同一准入标准，不限于 code-review。非阻塞项由用户或父任务点名才做，知情提示与纯风格建议不做。priority 与 blocking 分开记录。
 - **类别白名单**：正确性 / 错误处理 / 数据丢失 / 输入型安全（注入、路径穿越、日志泄密——测试 harness 内可表达的攻击输入）。
 - **不做**：架构、可维护性、命名、风格、需求符合类——它们结构上不可证伪（当前输入下不存在失败行为），强写只会产出焊死实现的负债测试。这些保留原有人审路径，本 skill 对它们**沉默而非否决**。性能类仅在项目已有稳定 benchmark harness 时做，否则不碰。
-- **数量护栏**：每轮最多 3 个 finding——超过 3 个 Critical 说明该整体打回重写，不是逐条诉讼。每个 finding 最多 2 次 dispatch 尝试，超限如实记 NOT-TESTABLE，不无限凹。
+- **数量护栏**：每轮默认最多 3 个 finding，父任务可按预算明确调整。跨门先保守归并同一行为主张，保留每个来源 ID；不同触发或不同影响不能合并。超过上限或耗尽最多 2 次尝试的项记“待验证”，保留阻塞；预算耗尽不是 NOT-TESTABLE 或 REFUTED 的证据。
 
 ## Step 1: 收集 findings
 
@@ -38,6 +38,8 @@ Review finding 是 LLM 意见；红灯测试是可执行证据。本 skill 把�
 | category / severity | 类别与等级 | 按路由规则判 |
 | 声称的行为偏差 | **预期 X，实际 Y**——具体到可观察行为 | 只有「这里不好」没有行为偏差 → 不可测，如实告知 |
 | 复现思路 | 具体输入 / 触发场景 | 可选，有则给 agent |
+
+组合工作流的原始 finding ID、source gate、scope ID 与位置必须贯穿 repro 和修复交接，不能按排序重新编号。归并只复用一次测试工作，不覆盖各门原始判断。差异模式验证冻结 head；未提交或快照模式必须构造内容一致的独立测试环境，做不到就保留待验证状态，不退回 HEAD 冒充原对象。
 
 ## Step 2: Dispatch repro agent
 
@@ -71,7 +73,7 @@ rubric must arrive inline. Repo files are different: pass paths and let the agen
 
 ### 仓库与测试环境
 [session root 与源码 checkout 的各自绝对路径、源码 branch/HEAD、固定 SHA 范围或当前 diff + 新文件列表、允许新增测试的目录；测试框架与运行命令，如 `cargo test` / `npx vitest run` / `node --test`；
-多 worktree 环境务必给源码目标的测试入口与独立 build 目录绝对路径，如 CARGO_TARGET_DIR=<source>/target；不假设 session cwd 就是源码目录]
+多 worktree 环境务必给源码目标的测试入口与独立 build 目录绝对路径，如 CARGO_TARGET_DIR=<owned-run-dir>/build/<finding-id>；不假设 session cwd 就是源码目录]
 
 ### Spec / 文档
 [spec、设计文档、issue 的路径或内容；没有就写"无——oracle 需从邻近测试/文档注释/标准语义中找"]
@@ -83,6 +85,8 @@ rubric must arrive inline. Repo files are different: pass paths and let the agen
 
 Agent 报告回来后，**你亲自跑，不采信转述**。逐条核对：
 
+自动工作流返回的 CONFIRMED / REFUTED 是待验收的候选结论；完成下面核查前，不撤销阻塞、不声称已独立验证。临时 worktree、测试内容与命令输出先保留，主控完成证据落盘和验收后再按已有清理授权处理；不要在 agent prompt 里无条件 `worktree remove --force`。
+
 - [ ] dispatch 前记录源码 checkout 的 staged/unstaged diff、未跟踪文件清单与受保护文件内容；返回后用 `git -C <source> status --porcelain`、`git -C <source> diff HEAD`（无 HEAD 时比较已保存文件快照）和新文件内容核查增量。agent 的改动只能是约定目录下的**新增**测试。既有用户修改不归到 agent 头上；agent 越界改变实现/既有测试/runner 配置则本轮证据无效，保留现场并报告，不擅自丢弃文件。
 - [ ] CONFIRMED 的红灯：失败类型是**测试体内断言失败**（编译错、超时、setup 崩溃都不算红灯，退回判 BLOCKED）
 - [ ] 失败输出与 finding 声称的行为偏差对得上（核对报告里的 predicted ↔ observed 映射）
@@ -90,12 +94,12 @@ Agent 报告回来后，**你亲自跑，不采信转述**。逐条核对：
 - [ ] 红灯连跑 3 次全红——杀 flaky
 - [ ] 其余 suite 在同环境为绿
 
-多 worktree / 共享 build cache 环境（Rust 尤甚）：验收使用源码目标各自的 build 目录绝对路径（如 `CARGO_TARGET_DIR=<source>/target`）及显式源码入口，否则你验的可能不是目标 checkout 的代码。
+多 worktree / 共享 build cache 环境（Rust 尤甚）：验收使用源码目标各自的 build 目录绝对路径（如 `CARGO_TARGET_DIR=<owned-run-dir>/build/<finding-id>`）及显式源码入口，否则你验的可能不是目标 checkout 的代码。
 
 ## Step 4: 按判定处理
 
 - **CONFIRMED** → 在已有 commit 授权内将红灯测试落**独立 commit**作验收基线，记下 SHA 和测试内容快照。本 skill 不新增 commit/push 权限；明确禁止 commit 时用文件清单、内容哈希及源码 HEAD 固定基线，继续允许的验证与修复。finding 升格为「已证实，附执行证据」。
-- **REFUTED** → finding 解除 blocking（视同 withdrawn），反证测试 + 可红性证明输出**留档回写**审查报告。不要替 reviewer 改分——若该 finding 是某维度低分的主因，带证据重新 dispatch review round 2，让 reviewer 自己修正。分数是 reviewer 的判断产物，你只有转发权。
+- **REFUTED，经主控机械验收** → 在已反驳场景内解除该 finding 的阻塞，反证测试 + 可红性证明留档。所有来源 gate 带同一 ID 和证据重新审查；不能因为其中一门撤回就抹掉另一门不同的行为主张。不要替 reviewer 改分或把原始 FAIL 改成 PASS。
 - **NOT-TESTABLE** → finding **保持原 severity**（不可测 ≠ 不成立），Critical 依旧 blocking，交人裁决。
 - **BLOCKED** → 环境问题，修好重试；suite 本身跑不动时所有 finding 判 BLOCKED 并停止。
 

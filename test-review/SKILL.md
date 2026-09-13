@@ -13,6 +13,8 @@ description: >
 
 Dispatch an independent reviewer agent to evaluate test quality. You (the session leader) handle the workflow; the reviewer handles the analysis.
 
+Use companion `review-gate` for the combined three-gate workflow. This standalone skill still handles a single test review. The parent may supply a JSON output schema; the scoring criteria and selected checkpoint remain unchanged.
+
 ## Flow
 
 ```
@@ -36,10 +38,12 @@ Use the explicit paths or the task's known source checkout first. Keep the runti
 
 Collect these items — they become the reviewer's input:
 
+Declare `diff`, `working-tree`, or `snapshot`. Changes are judged against their base; a snapshot judges the specified suite's current state. Read applicable source-checkout `AGENTS.md` and `REVIEW_GUIDELINES.md`, including nested rules for target files. Separate requirements, observed execution results, and author explanations. Missing tests are a coverage finding, not proof that implementation is wrong.
+
 | Context Item | Where to Find | Required? |
 |---|---|---|
 | **Test files** | Paths from Step 1 | Yes |
-| **Feature description** | Spec docs, plan docs, README, or infer from test names | Yes (can be inferred) |
+| **Feature description** | Specifications, README or observable behavior; test names only locate intent | Yes; state missing evidence rather than invent requirements |
 | **Source code** | The implementation files the tests target (if they exist) | No (pure TDD may not have impl yet) |
 | **Related spec** | `docs/`, design docs, plan docs | No but helpful |
 | **Language/framework** | Infer from file extensions and imports | Yes (auto-detected) |
@@ -97,11 +101,11 @@ Read `test-reviewer.md` (it sits next to this file in the skill directory) for t
 The reviewer returns a structured report with:
 - 6-dimension scores
 - Final score (weighted + E2E bonus)
-- Gate result (PASS/FAIL)
+- Gate result (PASS/FAIL/INCONCLUSIVE)
 - Missing scenarios list
 - Suggestions
 
-Present the full report to the user as-is.
+Keep the original report available. Summaries retain every finding ID, blocking decision, human callout and unrun check, without changing scores or verdicts. Informational changes are not missing scenarios or automatic fix tasks. Behavior bugs identified by this reviewer can enter `repro` under the same evidence rules as bugs found by code-review.
 
 ## Step 5: Gate Decision
 
@@ -111,7 +115,10 @@ Read the gate result from the report:
   Report the gate passed for the recorded scope, then continue the parent's authorized workflow at its selected checkpoint.
 
 - **FAIL**:
-  Report concrete missing scenarios. For an authorized implementation task, the parent fixes in-scope test defects and reruns relevant checks and review; a review-only task returns findings without modifying files. Do not pass the blocked checkpoint until the findings are resolved or the user overrides it.
+  Report concrete missing scenarios or test defects. For an authorized implementation task, the parent fixes in-scope test defects and reruns relevant checks and review; a review-only task returns findings without modifying files. Do not pass the blocked checkpoint until the findings are resolved or the user overrides it.
+
+- **INCONCLUSIVE**:
+  Preserve missing evidence or the absence of an applicable review target. Do not fabricate scores or pass the checkpoint; gather available inputs within scope and request only information that cannot be discovered.
 
 With `tdd`, review a completed vertical slice or the suite after RED → GREEN; do not turn it into a mandatory review of all tests before any implementation. If a parent workflow explicitly requires a pre-implementation gate, preserve that gate and review the current slice before proceeding. Do not change another skill's automatic trigger or override an explicit approval requirement.
 
@@ -120,6 +127,8 @@ With `tdd`, review a completed vertical slice or the suite after RED → GREEN; 
 同一个 `slugify` 函数、两份不同充分度的测试套件——这一对就是 reviewer 的校准夹具（真实运行产物）：
 - [不足版（5 测试）→ FAIL 5.32](examples/sample-fail.md) —— 附 8 条具体缺失场景，「状态组合」N/A
 - [充分版（15 测试，补齐 7 条）→ PASS 8.35](examples/sample-pass.md) —— Boundary 压线但达标，reviewer 不放水
+
+这些是历史报告，不是可执行测试夹具。充分版中的两个 property test 只有占位注释；如果把展示代码当作实际测试输入，应如实报告空断言，不能为了复现历史 PASS 而忽略。前向校准只提供真实输入、规格和检查点，隐藏历史分数和判定。
 
 ## 失败模式与安全边界
 
@@ -132,6 +141,6 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 
 ## Notes
 
-- Each review is a **fresh agent** — no memory of previous reviews. This prevents bias.
+- Each review is a **fresh agent**, without the author's discussion history. A re-review receives the current scope and accepted evidence with finding IDs, not instructions to preserve the earlier conclusion.
 - If the user disagrees with a score, they can override the gate. But the default is strict enforcement.
 - The parent workflow chooses the checkpoint; this skill evaluates test quality without redefining the parent's TDD order.

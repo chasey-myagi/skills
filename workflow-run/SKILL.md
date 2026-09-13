@@ -40,17 +40,19 @@ node <本 skill 目录>/scripts/run.mjs <workflow.js> \
 - `--status-file PATH`：本 run 独占创建的 JSON sidecar（路径已存在——含悬空 symlink——则拒绝，不改内容、不派 agent）。schema 见下。
 - `--task-id ID`：写入 sidecar 的 `task_id`。没有 `--status-file` 时只作为 stderr 上的 harmless metadata，不报错。
 
-## 现成示例：跑 review-gate
+## 组合审查：review-gate
+
+同仓库的 `review-gate` skill 提供范围准备、三门组合、结构化 finding、人类提示和修复交接。本 skill 只负责执行 workflow，保留通用 `agent()` / 路由 / 状态契约，不内置审查判断。
 
 ```bash
-node <本 skill 目录>/scripts/run.mjs ~/.claude/workflows/review-gate.js \
-  --args '{"repoDir":"<源码绝对路径>","base":"<已解析的完整 base SHA>","head":"<已解析的完整 head SHA>","context":"<一句话说明这个 PR 做了什么>"}' \
+node <review-gate skill 目录>/scripts/run.mjs \
+  --args '{"repoDir":"<源码绝对路径>","mode":"diff","base":"<base ref>","head":"<head ref>","context":"<需求与已观测事实>"}' \
   --backend <脚本或 --route 选定的后端> \
   --cwd <agent 会话目录> \
   --status-file <本次运行独有的新文件路径>
 ```
 
-结果 JSON 的关键字段：`overall`（PASS/FAIL）、`reviews[]`（三个 gate 各自的 verdict/blocking/nonBlocking/summary）、`verification`（若 code-review FAIL 触发了 repro 验证：per-finding 的 CONFIRMED/REFUTED/NOT_TESTABLE，`effectiveBlocking`，advisory 的 `passedAfterVerification`）。**逐条转述给用户，不要只报一个 PASS/FAIL**；CONFIRMED finding 的 `testContent` 是修复验收契约，提醒用户落盘。
+结果解释以 `review-gate` 的 schema 和 skill 为准。保留各门原始报告、finding ID、知情提示、scope 和产物路径；不能只报 PASS/FAIL。Repro 候选结论需要父任务机械验收，不能由 workflow 自动改写原始 gate 的判定。
 
 先看 runner 退出码和 sidecar：exit 2 表示有 agent 没真正跑成，不要把合成的 `overall: FAIL` 当成审查结论。exit 0 和 `completed` 只证明已调用的 agent 执行成功；还要核对预期三个 gate 的名称、结果数量和各自 verdict，不能从 runner 状态推断脚本实际调用了哪些 gate。
 
@@ -114,4 +116,4 @@ node <本 skill 目录>/scripts/run.mjs ~/.claude/workflows/review-gate.js \
 
 - 设计依据与四家 headless 机制的完整差异矩阵（含各 flag 实测记录、prior art 项目对比）见 [references/cli-matrix.md](references/cli-matrix.md)。
 - Prior art：[six-ddc/codex-dynamic-workflows](https://github.com/six-ddc/codex-dynamic-workflows)（多后端，Bun IPC）、[scasella/claude-dynamic-workflows-codex](https://github.com/scasella/claude-dynamic-workflows-codex)（codex app-server，最成熟）。本实现刻意更小：4 个 CLI adapter + 统一 schema 层，无 viewer/resume。反向路线（Claude Code 换模型跑 workflow）见 cc-fleet / claude-code-router，解决的是「换模型」不是「换宿主」。
-- 与 Claude Code Workflow 工具的差异：不支持 `workflow()` 嵌套、`budget` 是 stub（total=null）、`isolation:'worktree'` 选项忽略（review-gate 的 verify stage 在 agent prompt 里自建 worktree，不受影响）。
+- 与 Claude Code Workflow 工具的差异：不支持 `workflow()` 嵌套、`budget` 是 stub（total=null）、`isolation:'worktree'` 选项忽略。需要隔离源码的 workflow 自己管理目标与资源，不能把该选项当成已建立隔离的证据。

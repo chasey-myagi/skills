@@ -49,7 +49,7 @@ test('a successful review stays completed after the CLI recovers from rate limit
 
 test('a CLI that closes stdin early still records its authentication failure', async t => {
   const result = await runCase(t, `
-    require('node:fs').closeSync(0);
+    process.stdin.destroy();
     console.log(JSON.stringify({is_error:true,result:'Please run /login'}));
     setTimeout(() => process.exit(0), 100);
   `, { largePrompt: true });
