@@ -225,6 +225,7 @@ function scoreIssues(gate, report) {
   const weights = gate === "test-review" ? TEST_WEIGHTS : CODE_WEIGHTS;
   const seen = new Set();
   const scored = [];
+  const reportedWeights = [];
   let unknown = false;
   for (const item of scores) {
     const name = dimCanon(item.dimension, gate);
@@ -240,9 +241,17 @@ function scoreIssues(gate, report) {
     } else {
       scored.push({ ...item, dimension: name });
     }
-    if (item.weight !== undefined && Math.abs(item.weight - weights[name]) > 0.0001) {
-      errors.push(`${name} weight contradicts rubric`);
-    }
+    if (item.weight !== undefined && name in weights && !item.na) reportedWeights.push({ name, weight: item.weight });
+  }
+  // The rubric redistributes N/A weight over the remaining dimensions, so a
+  // reported weight may be either the fixed weight or its redistributed share.
+  const applicableWeight = scores
+    .filter(item => !item.na)
+    .reduce((sum, item) => sum + (weights[dimCanon(item.dimension, gate)] ?? 0), 0);
+  for (const { name, weight } of reportedWeights) {
+    const fixed = Math.abs(weight - weights[name]) <= 0.001;
+    const redistributed = applicableWeight > 0 && Math.abs(weight - weights[name] / applicableWeight) <= 0.001;
+    if (!fixed && !redistributed) errors.push(`${name} weight contradicts rubric`);
   }
   const missing = Object.keys(weights).filter(name => !seen.has(name));
   if (missing.length) errors.push(`missing dimensions: ${missing.join(", ")}`);

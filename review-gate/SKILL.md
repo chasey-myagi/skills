@@ -32,18 +32,18 @@ Policy files may link to other policy files inside the repository. Committed rev
 
 ## Run
 
-Install `review-gate`, `workflow-run`, `code-review`, `test-review`, `linus-review` and `repro` as sibling packages. Use Node 18 or later. Resolve this skill's location from the installation; do not assume another user's home directory.
+Install `review-gate`, `code-review`, `test-review`, `linus-review`, and `repro` as sibling packages. Use Node 18 or later. Resolve this skill's location from the installation; do not assume another user's home directory.
 
-```bash
-node <review-gate>/scripts/run.mjs \
-  --args '{"repoDir":"<source absolute path>","mode":"diff","base":"<base ref>","head":"<head ref>","context":"<requirements and observed facts>"}' \
-  --backend claude --cwd <session root> \
-  --status-file <unique new status file>
-```
+**Default execution policy (sub-agent + self-model; no `claude` CLI / `codex` CLI):**
+- When an agent is asked to run `review-gate`, dispatch **three independent, strictly read-only sub-agents** (`code-review`, `test-review`, `linus-review`) inside that agent's own runtime using its **self-model** (the agent's own current model).
+- **Do NOT invoke `claude` CLI or `codex` CLI** (`--backend claude` / `--backend codex` via `workflow-run` or direct shell calls) to execute `review-gate`.
+- Reuse this package's deterministic engine modules (`scripts/source.mjs`, `scripts/schema.mjs`, `scripts/handoff.mjs`) to:
+  1. Freeze the exact target scope (`captureTarget`, `writeSnapshot`, `unifiedDiff`, `sha256`), policy documents, and manifest into a fresh run directory outside the source repository.
+  2. Build the three per-gate prompts with the inlined sibling rubrics (`code-review/code-reviewer.md`, `test-review/test-reviewer.md`, `linus-review/linus-reviewer.md`), frozen diff/snapshot pointers, and `GATE_SCHEMA`.
+  3. Launch three fresh, independent, read-only sub-agents on the agent's own model (never forwarding the author's development conversation or cross-gate results), save each raw JSON report under `<runDir>/reports/<gate>.json`, and aggregate with `evaluateGate`, `aggregateFindings`, `aggregateCallouts`, drift detection, and `renderHandoff` to produce `<runDir>/review-result.json` and `<runDir>/handoff.md`.
+- For uncommitted work use `mode: "working-tree"` with task `paths`; for a snapshot use `mode: "snapshot"` with required `paths`. `scripts/run.mjs` / `workflow-run` remains only as an internal adapter for tests or explicitly requested non-`claude`/non-`codex` headless workflows; never default to `--backend claude` or `--backend codex`.
 
-Choose backend/model/routes according to the task's policy; the example is not authorization to substitute a required provider. Pass the existing runner's routing, concurrency, timeout, effort and task/status flags through this entry. For uncommitted work use `mode: "working-tree"` with task `paths`; for a snapshot use `mode: "snapshot"` with required `paths`.
-
-For a native Workflow host, `node <review-gate>/scripts/run.mjs --print-workflow` prints a small adapter referencing this installation. After preserving an existing entry, install that output in the host's workflow directory. It calls the same engine; relocating the installation requires regenerating the adapter. Native runtime execution still requires checking each returned gate and the result status.
+**pi cannot run this composite gate.** pi reads installed skills but has no sub-agents, so it cannot dispatch the three reviewers. Do not work around that by shelling out to the `claude` or `codex` CLI.
 
 ## Read the result and continue
 

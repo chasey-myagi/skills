@@ -53,6 +53,16 @@ function notApplicable() {
   for (const s of r.assessment.scores.filter(s => !s.na)) s.weighted = s.score * s.weight / 0.85;
   return r;
 }
+function notApplicableRedistributedWeights() {
+  const r = notApplicable();
+  for (const s of r.assessment.scores.filter(s => !s.na)) s.weight = Math.round(s.weight / 0.85 * 10000) / 10000;
+  return r;
+}
+test('N/A redistributed weights are accepted', () => {
+  const result = evaluateGate('code-review', notApplicableRedistributedWeights());
+  assert.deepEqual(result.semanticErrors, []);
+  assert.equal(result.verdict, 'PASS');
+});
 function incomplete() {
   const r = gateReport('code-review', { verdict: 'INCONCLUSIVE', assessment: { finalScore: null } });
   r.assessment.scores[1] = { dimension: 'Security', unknown: true, reason: 'necessary threat model unavailable' };
@@ -63,6 +73,8 @@ for (const [name, base, mutate, errors] of [
   ['UNKNOWN needs reason', incomplete, r => delete r.assessment.scores[1].reason, ['Security missing reason']],
   ['score and N/A are exclusive', notApplicable, r => r.assessment.scores[1].score = 9, ['Security requires exactly one of score, N/A or UNKNOWN']],
   ['rubric weight is fixed', () => gateReport('code-review'), r => r.assessment.scores[0].weight = 0.3, ['Correctness weight contradicts rubric']],
+  ['redistributed weight is not free', notApplicableRedistributedWeights, r => r.assessment.scores[0].weight = 0.35, ['Correctness weight contradicts rubric']],
+  ['no redistribution without N/A', () => gateReport('code-review'), r => r.assessment.scores[0].weight = 0.25 / 0.85, ['Correctness weight contradicts rubric']],
   ['weighted contribution agrees', () => gateReport('code-review'), r => r.assessment.scores[0].weighted += 0.06, ['Correctness weighted contribution contradicts rubric']],
   ['code has no E2E bonus', () => gateReport('code-review'), r => { r.assessment.e2eBonus = 0.5; r.assessment.finalScore = 9.5; }, ['E2E bonus contradicts rubric']],
   ['duplicate dimension rejected', () => gateReport('code-review'), r => {

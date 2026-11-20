@@ -40,14 +40,14 @@ npx --yes skills@1.5.23 add /absolute/path/to/skills \
 
 派一个**全新 agent** 当审查员：它不继承你的会话历史、不知道代码是谁写的——这正是在自己代码上自查最缺的东西。评分带置信度门（不确定不报）和 **N/A 维度**（不适用的维度诚实标 N/A、权重重分配，不硬凑分污染 PASS 结论）。
 
-- **review-gate** — 组合三门：固定已提交变更、未提交修改或文件快照的范围，保留结构化 findings 与知情提示，把各门的行为问题送到 repro，并生成可追踪的修复交接。需要同目录安装下列配套包；单独审一种角度仍用相应 review skill。
+- **review-gate** — 组合三门：固定已提交变更、未提交修改或文件快照的范围，保留结构化 findings 与知情提示，把各门的行为问题送到 repro，并生成可追踪的修复交接。需要同目录安装下列配套包；单独审一种角度仍用相应 review skill。默认在宿主里用宿主自己的模型起三个只读子 agent，不调用 `claude` / `codex` CLI。`workflow-run` 改为可选，只留给测试和明确要求的非 claude / 非 codex 无头运行。pi 没有子 agent，组合门暂不支持在 pi 里跑。
 
   ```bash
   npx skills@latest add chasey-myagi/skills \
-    --skill review-gate workflow-run code-review test-review linus-review repro
+    --skill review-gate code-review test-review linus-review repro
   ```
 
-  范围、结果与运行方式见 [review-gate](review-gate/SKILL.md)。`scripts/run.mjs --print-workflow` 可生成原生 Workflow 宿主的薄入口，执行逻辑仍只有一份。
+  范围、结果与运行方式见 [review-gate](review-gate/SKILL.md)。`scripts/run.mjs --print-workflow` 仍可在装了可选的 `workflow-run` 时生成薄入口，执行逻辑仍只有一份。
 
 - **code-review** — 代码评审：6 维加权评分 + 优先级问题清单 + PASS/FAIL 质量门。[看真实报告 →](code-review/examples/sample-pass.md)
 
@@ -83,7 +83,7 @@ Review finding 是 LLM 意见，可能真实也可能虚假；dev-agent 修复�
 
 ## Anywhere
 
-- **workflow-run** — 在**任意** agent CLI（claude / codex / kimi / grok）上跑 Claude Code 风格的 workflow 脚本（如 review-gate 的 3-gate PR review）。捆绑零依赖 Node runner：`agent()` 落到各家 headless 模式，schema 强制统一走 validate+retry，`--route` 可把不同 gate 分流到不同家的模型。四家 headless 机制差异矩阵见 [references/cli-matrix.md](workflow-run/references/cli-matrix.md)。
+- **workflow-run** — 在**任意** agent CLI（claude / codex / kimi / grok）上跑 Claude Code 风格的 workflow 脚本。捆绑零依赖 Node runner：`agent()` 落到各家 headless 模式，schema 强制统一走 validate+retry，`--route` 可把不同 gate 分流到不同家的模型。review-gate 不再默认走这条路径；只有测试或明确要求的无头运行才用它，并且不要默认 `--backend claude` / `--backend codex`。四家 headless 机制差异矩阵见 [references/cli-matrix.md](workflow-run/references/cli-matrix.md)。
 
   ```
   npx skills@latest add chasey-myagi/skills/workflow-run
