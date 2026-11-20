@@ -1,0 +1,9 @@
+[
+  {
+    "id": "K",
+    "mode": "diff",
+    "gates": ["test-review"],
+    "expected": "FAIL; TS-12 / CS-TEST-1, test-gap blocking. CS-TEST-1 includes the rollback check: the new test must fail when the code change is reverted.",
+    "input": "File test/notify.test.ts, newly added for sendWelcome(user) which must send one email to user.email with subject 'Welcome'.\n```ts\ntest('sends welcome', async () => {\n  const mailer = { send: vi.fn() };\n  await sendWelcome(mailer, { email: 'a@b.c' });\n  expect(mailer.send).toHaveBeenCalled();\n});\n```"
+  }
+]

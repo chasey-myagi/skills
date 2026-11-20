@@ -51,6 +51,7 @@ export function loadPreparedState(runDir) {
     diffPath: saved.diffPath,
     diffHash: saved.diffHash,
     reproRubric: readFileSync(join(runDir, "meta", "kit", "repro", "repro-agent.md"), "utf8"),
+    style: saved.style || null,
   };
 }
 
@@ -227,7 +228,7 @@ export async function finalizeReview(state, reviews, runtime = {}) {
 
 export async function finalizeRun(runDir, runtime = {}) {
   const state = loadPreparedState(runDir);
-  const reviews = GATE_NAMES.map((gate) => evaluateGate(gate, readGateReport(runDir, gate)));
+  const reviews = GATE_NAMES.map((gate) => evaluateGate(gate, readGateReport(runDir, gate), { style: state.style }));
   return finalizeReview(state, reviews, runtime);
 }
 

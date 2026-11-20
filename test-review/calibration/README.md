@@ -12,3 +12,5 @@ Inputs: [raw cases](cases.json). Actual output: [test](test-report.md).
 `examples/` reports are historical format illustrations, not executable fixtures. The two property tests in the fifteen-test example contain only placeholder comments; an honest review reports the empty assertions instead of copying the historical PASS. Forward calibration shows the real input, the spec, and the checkpoint, and hides historical scores.
 
 The wording edit that tells standalone calls to use Markdown and composite mode to use the parent JSON schema does not change weights or thresholds. These saved judgments were not re-run.
+
+Coding-style case [K](coding-style.json) is the expected outcome for a test that only asserts a mock was called (`TS-12` / `CS-TEST-1`, failing). No fresh model transcript was produced. D and E were not re-run.

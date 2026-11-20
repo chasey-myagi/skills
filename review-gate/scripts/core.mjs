@@ -38,7 +38,7 @@ export async function runReviewGate(rawArgs, runtime = {}) {
         result.diagnostics.agentFailures.push({ gate, error: err.message });
         log(`agent ${gate} threw: ${err.message}`);
       }
-      result.reviews[index] = evaluateGate(gate, raw);
+      result.reviews[index] = evaluateGate(gate, raw, { style: state.style });
       persist(runDir, result);
       return result.reviews[index];
     });

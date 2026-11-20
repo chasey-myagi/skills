@@ -1,0 +1,1981 @@
+{
+  "version": 1,
+  "tiers": {
+    "hard": {
+      "priorities": [
+        "P0",
+        "P1",
+        "P2"
+      ],
+      "mayBlock": true
+    },
+    "structural": {
+      "priorities": [
+        "P2",
+        "P3"
+      ],
+      "mayBlock": "introduced-with-cost"
+    },
+    "advisory": {
+      "priorities": [
+        "P3"
+      ],
+      "mayBlock": false
+    }
+  },
+  "routing": {
+    "python": {
+      "ext": [
+        ".py",
+        ".pyi"
+      ],
+      "shebang": [
+        "python"
+      ]
+    },
+    "typescript": {
+      "ext": [
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs"
+      ],
+      "shebang": [
+        "node",
+        "deno",
+        "bun"
+      ]
+    },
+    "go": {
+      "ext": [
+        ".go"
+      ]
+    },
+    "rust": {
+      "ext": [
+        ".rs"
+      ]
+    }
+  },
+  "generated": {
+    "globs": [
+      "*.pb.go",
+      "*_pb2.py",
+      "*_pb2_grpc.py",
+      "*.gen.ts",
+      "*.generated.*"
+    ],
+    "goHeader": "^// Code generated .* DO NOT EDIT\\.$"
+  },
+  "advisoryInstanceCap": 3,
+  "profiles": {
+    "brief": [
+      "strong",
+      "some"
+    ]
+  },
+  "rules": [
+    {
+      "id": "CS-ABS-1",
+      "title": "A helper needs a real reason",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "architecture",
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://code.claude.com/docs/en/best-practices"
+      ],
+      "enforcedBy": [],
+      "text": "Introduce a helper, wrapper, or layer only when it already has two call sites, or when the helper names a real concept and makes the main flow readable. Inline a one-off operation. Line count is not the rule."
+    },
+    {
+      "id": "CS-ABS-2",
+      "title": "No abstraction before the second implementation",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/codebase-design/SKILL.md",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+        "https://x.com/karpathy/status/2015883857489522876",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "No interface, base class, trait, generic parameter, registry, factory, or plugin system until a second concrete implementation exists. A test double alone is not that second implementation when a function or a concrete fake would do. A public framework whose product is the interface, such as adk-go, may publish the interface with its first implementation."
+    },
+    {
+      "id": "CS-ABS-3",
+      "title": "Use what is already there",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "Do not reimplement the standard library or a dependency the project already imports. A thin wrapper that only renames a library call is noise."
+    },
+    {
+      "id": "CS-ABS-4",
+      "title": "Split files by concept",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Split a file along a real concept boundary. Merge a tiny file that holds one helper with a single caller. Line count is only a hint, not a limit."
+    },
+    {
+      "id": "CS-ABS-5",
+      "title": "No dead code",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://x.com/karpathy/status/2015883857489522876",
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md",
+        "https://code.claude.com/docs/en/best-practices"
+      ],
+      "enforcedBy": [],
+      "text": "No unreachable branches, commented-out blocks, \"kept for later\" stubs, unused exports or parameters added by this change, or TODOs without a ticket."
+    },
+    {
+      "id": "CS-AI-1",
+      "title": "Change size matches the task",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "architecture",
+        "requirements"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md",
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "The diff contains what the task or spec requires. Judge scope against that spec and cite the spec line when the change goes past it. Flag unrequested features, flags, config knobs, compatibility shims, retries, fallbacks, and options for a future that is not specified. Complexity for an unlikely case needs a concrete failure mode and its cost."
+    },
+    {
+      "id": "CS-AI-2",
+      "title": "One implementation per behavior",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "No parallel near-duplicate implementations, copy-pasted blocks that diverge slightly, or a new utility next to an existing one doing the same thing. Extend or reuse the existing code."
+    },
+    {
+      "id": "CS-CMT-1",
+      "title": "Comments say why",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://code.claude.com/docs/en/best-practices",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md",
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "Comments explain a non-obvious reason or constraint. Do not narrate what the next line already says. Length follows the content. A long-lived workaround names the constraint. A lint suppression names the rule and the reason."
+    },
+    {
+      "id": "CS-CMT-2",
+      "title": "No process markers",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "No process markers in source or docs: priority stamps, review banners, \"added for review\", a design diary, or a self-report of which rules were followed. A todo names an owner. Process belongs in commits and pull requests."
+    },
+    {
+      "id": "CS-CMT-3",
+      "title": "No provenance leakage",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "Source does not name other repositories, upstream projects, \"the closed-source version\", prompts or the agent that wrote it. Preserve license notices and concise required attribution."
+    },
+    {
+      "id": "CS-NAME-1",
+      "title": "No names that state no role",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://lucumr.pocoo.org/2025/6/12/agentic-coding/"
+      ],
+      "enforcedBy": [],
+      "text": "Do not use a name that states no role: Manager, Service, Helper, Handler, data, info, item, or obj. A value that has a physical unit includes the unit in the name. Abbreviations and short names are decided by the language pack and by repository policy, not by this rule."
+    },
+    {
+      "id": "CS-NAME-2",
+      "title": "One value, one name",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "The same value keeps one name through every function it passes. Do not rename names that are external contracts: wire fields, config keys, checkpoint keys, a callee's parameter names."
+    },
+    {
+      "id": "CS-ERR-1",
+      "title": "Never swallow an error",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness",
+        "data-loss"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [
+        "errcheck",
+        "ruff:E722",
+        "ruff:BLE001"
+      ],
+      "text": "No empty catch, ignored error return, or catch-all that neither logs with a reason nor propagates. Catch the specific failure you handle."
+    },
+    {
+      "id": "CS-ERR-2",
+      "title": "Never fabricate success",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness",
+        "data-loss"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+      ],
+      "enforcedBy": [],
+      "text": "A failure does not become an empty list, zero, `null`, default object or `ok` status that callers read as a valid result. Propagate it or return an explicit failure value the caller must inspect."
+    },
+    {
+      "id": "CS-ERR-3",
+      "title": "Trust established contracts",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "error-handling",
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://code.claude.com/docs/en/best-practices",
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md",
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Access fields of known types directly. No impossible null checks, attribute probing, fallback field lookups or redundant coercion on values whose type already guarantees them. Validate untrusted input once at its boundary, then pass a narrowed type onward. A missing required field fails visibly."
+    },
+    {
+      "id": "CS-ERR-4",
+      "title": "Error handling earns its place",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "error-handling",
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://code.claude.com/docs/en/best-practices",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Every guard and catch answers \"what breaks if I delete this?\" Remove debugging-only guards once the contract is established. Do not wrap large blocks to defend against speculative failures. Wrap an error only to add context the caller needs, and keep the original cause. An error that is already returned is not also logged."
+    },
+    {
+      "id": "CS-TYPE-1",
+      "title": "No type-checker escape hatches inside the codebase",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability",
+        "architecture"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md",
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "Internal signatures name concrete types. No dynamic/any types, unchecked casts, non-null assertions or ignore pragmas to silence a checker. The only loose type is an untrusted boundary value, narrowed before its first field read and never passed onward loose."
+    },
+    {
+      "id": "CS-TYPE-2",
+      "title": "Closed sets are types",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md",
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "A closed set of values is an enum or literal union, not bare strings compared ad hoc. Match exhaustively where the language supports it. Avoid a wildcard match on a set this code defined."
+    },
+    {
+      "id": "CS-TYPE-3",
+      "title": "No parameters accepted to be discarded",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "Remove a parameter the function does not use and update callers. When an established interface requires it, keep it and make that constraint explicit."
+    },
+    {
+      "id": "CS-CFG-1",
+      "title": "No embedded deployment values",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "No hardcoded URLs, hostnames or absolute paths. Name magic numbers at module scope; an empirical constant states where it was measured. A default lives at one layer and is passed down; lower layers do not re-declare it."
+    },
+    {
+      "id": "CS-CFG-2",
+      "title": "One mechanism, no import side effects",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md",
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "One config mechanism, one logging setup, one entry-point mechanism per repository, following the existing choice. Importing a library module has no side effects: no environment mutation, global registration or I/O at import time."
+    },
+    {
+      "id": "CS-LOG-1",
+      "title": "Logs use the logger",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Use the project logger and its levels, not hand-written `[INFO]`/`[step 3]` prefixes. Library code does not print; only CLI output for the user does."
+    },
+    {
+      "id": "CS-TEST-1",
+      "title": "Every case can turn red",
+      "tier": "hard",
+      "gate": "test-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/tests.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://simonwillison.net/guides/agentic-engineering-patterns/red-green-tdd/"
+      ],
+      "enforcedBy": [],
+      "text": "Each case answers \"which future diff to the code turns this red?\" A case whose only failure mode is an edit to the test is deleted: assertions that restate the implementation's formula, read back a constant with no consumer, test the language or a library, or only exercise their own fake. A new or changed test must fail when the code change it guards is rolled back."
+    },
+    {
+      "id": "CS-TEST-2",
+      "title": "Never weaken a case to pass",
+      "tier": "hard",
+      "gate": "test-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://learn-go.org/ai/agents-md/"
+      ],
+      "enforcedBy": [],
+      "text": "No dropped assertions, stubbed code under test, widened tolerances or added skips to make a case green or faster. A changed contract gets a rewritten case."
+    },
+    {
+      "id": "CS-TEST-3",
+      "title": "Test the contract, not the layout",
+      "tier": "structural",
+      "gate": "test-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/tests.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md",
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "Assert inputs to outputs, state changes and errors through the public surface. Mock only external or slow boundaries, and only when the assertion still checks a result. Do not snapshot internal encodings that can change without changing behavior."
+    },
+    {
+      "id": "CS-TEST-4",
+      "title": "Deterministic and dense",
+      "tier": "structural",
+      "gate": "test-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "No timed waits for ordering; force interleavings with events, barriers or fake clocks. Fold repetitive cases into one table-driven or parametrized case; keep a row only if it guards a failure no other row guards. Put a new case next to its suite instead of a new one-case file."
+    },
+    {
+      "id": "PY-1",
+      "title": "Use the standard library",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Reach for `itertools`, `functools`, `collections`, `pathlib`, `dataclasses` and already-imported dependencies before writing a helper.\nWrong: a three-line wrapper around `functools.lru_cache`; a hand-rolled `chunked()` when `itertools.batched` (3.12+) is available.",
+      "implements": "CS-ABS-3"
+    },
+    {
+      "id": "PY-2",
+      "title": "No ABC or registry for one class",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/codebase-design/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "No `ABC`, `Protocol`, registry dict or plugin loader with a single concrete implementation. A `Protocol` that types a callback is allowed (see PY-4).",
+      "implements": "CS-ABS-2"
+    },
+    {
+      "id": "PY-3",
+      "title": "No bare or silent except",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [
+        "ruff:E722",
+        "ruff:BLE001",
+        "ruff:S110"
+      ],
+      "text": "Wrong: `except:`; `except Exception: pass`; `except Exception: return []`.\nRight: catch the specific exception you handle; a broad catch at a process boundary logs with a reason or re-raises.",
+      "implements": "CS-ERR-1"
+    },
+    {
+      "id": "PY-4",
+      "title": "No escape-hatch types internally",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Annotate every parameter and return. Use `X | None`, parameterized containers (`dict[str, int]`), dataclasses, `TypedDict`, `Literal`, `Enum`. Do not use `Any`, bare `dict`/`list`, `cast()` or `# type: ignore` to quiet the checker. A callback is a `Protocol` with a named `__call__` signature. Decoded json and raw request bodies may enter as `object` or `Mapping[str, object]` and are narrowed with `isinstance` before use.",
+      "implements": "CS-TYPE-1"
+    },
+    {
+      "id": "PY-5",
+      "title": "No attribute probing on known types",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "error-handling",
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: `getattr(config, \"max_batch_size\", 8)` or `if hasattr(model, \"encoder\")` on a type that declares the attribute.\nRight: `config.max_batch_size`; let a missing attribute raise.",
+      "implements": "CS-ERR-3"
+    },
+    {
+      "id": "PY-6",
+      "title": "No mutable default arguments",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "correctness"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [
+        "ruff:B006"
+      ],
+      "text": "Wrong: `def collect(items=[])`, `= {}`. Right: `None` sentinel, or `field(default_factory=list)` in dataclasses. Category: correctness."
+    },
+    {
+      "id": "PY-7",
+      "title": "One structure per role",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "Internal value objects are `@dataclass` (prefer `kw_only=True`); validated cross-boundary schemas use the project's validation library (e.g. `pydantic.BaseModel`). Do not hand-roll validators the library provides, and do not model one concept both ways.",
+      "implements": "CS-TYPE-2"
+    },
+    {
+      "id": "PY-8",
+      "title": "assert for invariants, raise for input",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "error-handling"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "`assert` checks internal invariants you control (shapes, dtypes, preconditions). User input and environment errors raise `ValueError`, `RuntimeError`, `FileNotFoundError`. Never validate user input with `assert`; `python -O` strips it.",
+      "implements": "CS-ERR-4"
+    },
+    {
+      "id": "PY-9",
+      "title": "Imports at module scope",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Group stdlib / third-party / local. Import at module scope; break a cycle by moving the shared type to the module that constructs it. No `sys.path` patching, no wildcard imports, explicit `__all__` on re-exporting packages, and repository-internal imports from the defining module. An optional dependency may be imported inside the function that uses it so a missing extra does not break import of the package.",
+      "implements": "CS-CFG-2"
+    },
+    {
+      "id": "PY-10",
+      "title": "Underscore is the exception",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "A leading `_` marks a name that would be a mistake to call from outside its module or class. Attributes read by other methods, module constants and booleans (`is_ready`) are public. A leading underscore, or a name marked internal, means callers outside the module would be wrong to use it. Do not add that marker, or export everything, out of habit."
+    },
+    {
+      "id": "PY-11",
+      "title": "One logger per module",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "`logger = logging.getLogger(__name__)`; no second logging library; `print` only for CLI output the user reads.",
+      "implements": "CS-LOG-1"
+    },
+    {
+      "id": "PY-12",
+      "title": "Entry points own side effects",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "`if __name__ == \"__main__\":`, environment mutation, global registration and logging configuration only in entry-point modules. Library imports are side-effect free.",
+      "implements": "CS-CFG-2"
+    },
+    {
+      "id": "PY-13",
+      "title": "Suppressions carry a reason",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "`# noqa: E501  reason`, never bare `# noqa`; `# type: ignore[code]` only with a reason and only at an untrusted boundary.",
+      "implements": "CS-CMT-1"
+    },
+    {
+      "id": "PY-14",
+      "title": "Parametrize and do not sleep",
+      "tier": "structural",
+      "gate": "test-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Fold repetitive cases into `pytest.mark.parametrize`. No `time.sleep` to order events; use `asyncio.Event`, barriers or fake clocks. Shared fixtures live in `conftest.py` or a fixtures module; a test file never imports another test file. Logic that can run in-process is not tested by spawning a subprocess.",
+      "implements": "CS-TEST-4"
+    },
+    {
+      "id": "TS-1",
+      "title": "No `any`, casts or non-null assertions to silence the checker",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/mattpocock/skills/blob/main/skills/misc/migrate-to-shoehorn/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: `const user = res.data as User`; `config!.port`; `// @ts-ignore`; `function parse(input: any)`.\nRight: boundary values (`JSON.parse`, `fetch().json()`, `process.env`, message payloads) are `unknown`, narrowed by a type guard or schema parse once; internal code receives the narrowed type. `@ts-expect-error` only with a reason and a tracking test. In tests, build a partial value with fromPartial rather than a cast. An assertion that can fail for more than one reason says which reason.",
+      "tsOnly": true,
+      "implements": "CS-TYPE-1"
+    },
+    {
+      "id": "TS-2",
+      "title": "Optional chaining and `??` do not hide broken contracts",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "error-handling",
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: optional chaining or a nullish default on a field the type already requires. Right: read required fields directly. Use optional chaining and nullish defaults only where the type is genuinely optional.",
+      "implements": "CS-ERR-3"
+    },
+    {
+      "id": "TS-3",
+      "title": "No silent catch or fabricated fallback",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: an empty catch, a catch that returns an empty list or null and then continues as success, or a catch that only logs and then treats the call as successful. Right: let the failure propagate, or return a discriminated result the caller has to check. Rethrow with the original cause when you add context.",
+      "implements": "CS-ERR-2"
+    },
+    {
+      "id": "TS-4",
+      "title": "No interface or abstract class for one implementation",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/codebase-design/SKILL.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: `interface IUserService` + `class UserServiceImpl`; an abstract base with one subclass; a DI container or factory that builds one class.\nRight: export the function or class directly; introduce a type when a second implementation appears. Structural typing lets tests pass a plain object.",
+      "implements": "CS-ABS-2"
+    },
+    {
+      "id": "TS-6",
+      "title": "Literal unions for closed sets",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "`type Status = \"idle\" | \"running\" | \"failed\"` or an `as const` object; `switch` ends with a `never` exhaustiveness check. Follow the repository if it already uses `enum`.",
+      "tsOnly": true,
+      "implements": "CS-TYPE-2"
+    },
+    {
+      "id": "TS-7",
+      "title": "Ban the empty shapes, trust inference",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Do not annotate with Function, object, {}, or Record<string, any>. Inferred locals do not need an annotation. Name a real shape when a signature crosses a module boundary.",
+      "tsOnly": true,
+      "implements": "CS-TYPE-1"
+    },
+    {
+      "id": "TS-8",
+      "title": "Use the platform",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "No hand-written deep clone (`structuredClone`), `sleep` promise duplicated per file, array flattening, URL or path parsing, or a utility already provided by an imported dependency.",
+      "implements": "CS-ABS-3"
+    },
+    {
+      "id": "TS-9",
+      "title": "Naming",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "No `I` prefix on interfaces, no `Impl` suffix, no `utils.ts`/`helpers.ts`/`*Manager` grab-bags. camelCase values, PascalCase types, UPPER_SNAKE only for true module constants. Idiomatic short names allowed: `i` in loops, `e`/`error` in catch, `props`, `ref`.",
+      "implements": "CS-NAME-1"
+    },
+    {
+      "id": "TS-10",
+      "title": "Library modules have no import-time effects",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md",
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "No top-level `fetch`, timers, listener registration or global mutation in library modules. Read `process.env`/`import.meta.env` once in a config module and pass values down. A heavy module may be imported inside the branch that uses it.",
+      "implements": "CS-CFG-2"
+    },
+    {
+      "id": "TS-11",
+      "title": "Narrow try blocks",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "error-handling"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrap the call that can fail, not the whole handler. Do not `catch` only to log and rethrow at every layer; one boundary logs. Keep `cause` when wrapping.",
+      "implements": "CS-ERR-4"
+    },
+    {
+      "id": "TS-12",
+      "title": "Tests assert outcomes, not mocks",
+      "tier": "hard",
+      "gate": "test-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/tests.md",
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: the only assertion is `expect(mock).toHaveBeenCalled()` on a replaced dependency; `expect(fn()).toBeDefined()`; a snapshot of internal state.\nRight: assert the returned value, emitted output, persisted state or thrown error. Call assertions are allowed when skipping or performing that call is the contract.",
+      "implements": "CS-TEST-1"
+    },
+    {
+      "id": "TS-13",
+      "title": "Fake time, table cases",
+      "tier": "structural",
+      "gate": "test-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "enforcedBy": [],
+      "text": "No `setTimeout`/`await sleep(…)` to wait for ordering; use fake timers or explicit resolution. Fold repeated cases into `test.each` / a table loop.",
+      "implements": "CS-TEST-4"
+    },
+    {
+      "id": "GO-1",
+      "title": "Never drop an error",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [
+        "errcheck"
+      ],
+      "text": "Wrong: `_ = f.Close()` on a written file; `data, _ := io.ReadAll(r)`; `if err != nil { return nil }` in a function returning `error` (returns success); `if err != nil { log.Println(err) }` then continuing with a zero value.\nRight: return the error, or handle it and state why continuing is correct. `defer` closes on write paths check the error.",
+      "implements": "CS-ERR-1"
+    },
+    {
+      "id": "GO-2",
+      "title": "Interfaces belong to the consumer",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md",
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: a producer package declares `type UserStore interface` next to its only implementation; constructors return interfaces.\nRight: accept interfaces, return structs. Declare a small interface in the package that consumes it, when a second implementation or a test seam actually exists.",
+      "implements": "CS-ABS-2"
+    },
+    {
+      "id": "GO-3",
+      "title": "Named types are a hint",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "derived",
+      "sources": [
+        "https://learn-go.org/ai/agents-md/"
+      ],
+      "enforcedBy": [],
+      "text": "Prefer a named type at an internal boundary. This is a hint covered by CS-TYPE-1; no Go source bans any outright.",
+      "implements": "CS-TYPE-1"
+    },
+    {
+      "id": "GO-4",
+      "title": "Wrap with context, check with `errors.Is/As`",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "error-handling"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrap with `fmt.Errorf(\"load config %s: %w\", path, err)` when the caller benefits from the context; `%v` when the cause must stay opaque. Compare with `errors.Is`/`errors.As`, never string matching. Log or return, not both. Do not wrap the same error at every frame with no new information. Do not change a wrapped error verb from %w to %v.",
+      "implements": "CS-ERR-4"
+    },
+    {
+      "id": "GO-5",
+      "title": "panic only for a startup failure",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://learn-go.org/ai/agents-md/"
+      ],
+      "enforcedBy": [],
+      "text": "panic belongs in main or init, for a startup failure that cannot continue. An expected failure returns error. Treating a recovered panic as success is CS-ERR-2.",
+      "implements": "CS-ERR-2"
+    },
+    {
+      "id": "GO-6",
+      "title": "Go naming",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "derived",
+      "sources": [
+        "https://learn-go.org/ai/agents-md/"
+      ],
+      "enforcedBy": [
+        "revive",
+        "staticcheck"
+      ],
+      "text": "Package names: short, lowercase, one word, no `util`, `common`, `helpers`, `base`, `models`. No stutter (`user.User` is fine, `user.UserService` is not). Short receivers, `ctx`, `err`, `i`, `n`, `r`, `w` are idiomatic and exempt from CS-NAME-1. Initialisms keep case (`userID`, `HTTPClient`). No `Get` prefix on getters.",
+      "implements": "CS-NAME-1"
+    },
+    {
+      "id": "GO-7",
+      "title": "Context is a parameter",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "correctness",
+        "maintainability"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md",
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://lucumr.pocoo.org/2025/6/12/agentic-coding/"
+      ],
+      "enforcedBy": [],
+      "text": "`ctx context.Context` is the first parameter, never stored in a struct, never `nil` (use `context.TODO()`). Goroutines started by the change have a cancellation path through that context or a done channel. Category: correctness when the leak is reachable. A context parameter has to be passed to the calls that need it, not accepted and dropped."
+    },
+    {
+      "id": "GO-8",
+      "title": "No `init()` side effects or mutable globals in libraries",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "`init()` limited to registering with the standard library where unavoidable. Configuration is passed in, not read from package-level vars.",
+      "implements": "CS-CFG-2"
+    },
+    {
+      "id": "GO-10",
+      "title": "Table tests, no sleeps",
+      "tier": "structural",
+      "gate": "test-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://learn-go.org/ai/agents-md/",
+        "https://github.com/charmbracelet/crush/blob/main/AGENTS.md",
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Table-driven cases with `t.Run`; `t.Fatalf` when continuing is meaningless. No `time.Sleep` for synchronization; use channels, `sync.WaitGroup` or a fake clock. Assertions on mock expectations alone fall under CS-TEST-1. Do not drop -race to make the suite faster.",
+      "implements": "CS-TEST-4"
+    },
+    {
+      "id": "RS-1",
+      "title": "No `unwrap`/`expect` on fallible input",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [
+        "clippy::unwrap_used"
+      ],
+      "text": "Wrong: `s.parse::<u16>().unwrap()` on user or file input in library code; `.expect(\"failed\")` on I/O.\nRight: propagate with `?`. `expect(\"reason the invariant holds\")` is allowed for invariants the code guarantees (a regex literal, a just-checked index). Tests and examples may unwrap. A detected program bug may panic. Input and I/O still return Result. When the repository denies clippy::unwrap_used, this rule leaves the prompt and the linter reports it.",
+      "implements": "CS-ERR-1"
+    },
+    {
+      "id": "RS-2",
+      "title": "`?` keeps typed errors",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "error-handling",
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: `.map_err(|e| e.to_string())?`; `Box<dyn Error>` or `anyhow` in a library's public API; a new error variant per call site; `map_err` that discards the source.\nRight: libraries define an error enum (e.g. with `thiserror`) with `#[from]` or `#[source]`; binaries may use `anyhow` with `.context(\"…\")`. Add context once, where it helps the caller.",
+      "implements": "CS-ERR-4"
+    },
+    {
+      "id": "RS-3",
+      "title": "No silent discard of `Result`",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md",
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: `let _ = write_all(…)`; `.ok()` dropping an error then continuing; `.unwrap_or_default()` that turns a parse failure into `0`; `if let Ok(v) = … { … }` with no `else` on a required operation.\nRight: handle or propagate; a deliberate discard states why in a comment.",
+      "implements": "CS-ERR-2"
+    },
+    {
+      "id": "RS-4",
+      "title": "No trait or generic for one type",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html",
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/codebase-design/SKILL.md"
+      ],
+      "enforcedBy": [],
+      "text": "No trait with one implementor, generic parameter instantiated once, or builder for a struct with two or three fields. Add the trait when the second type arrives.",
+      "implements": "CS-ABS-2"
+    },
+    {
+      "id": "RS-5",
+      "title": "`Box<dyn Trait>` and shared mutability need a reason",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "On a public API, do not expose Arc<Mutex<_>>, Rc<RefCell<_>>, or Box as the type callers must name. Keep that wrapper inside the crate. Private code may use it when the borrow requires it.",
+      "implements": "CS-ABS-2"
+    },
+    {
+      "id": "RS-6",
+      "title": "clone is a local choice",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "derived",
+      "sources": [
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "Cloning to satisfy the borrow checker has a cost. Prefer a borrow when the lifetime is local. There is no sourced ban on clone; treat this as a hint."
+    },
+    {
+      "id": "RS-7",
+      "title": "`unsafe` states its invariant",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Every `unsafe` block has a `// SAFETY:` comment naming the invariant that makes it sound. Avoid `unsafe` when a safe API exists.",
+      "implements": "CS-CMT-1"
+    },
+    {
+      "id": "RS-8",
+      "title": "Rust naming",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Rust names stay short: at most a couple of short words, and an established abbreviation is fine. Do not use Service, Manager, or Factory. This pack wins over CS-NAME-1 for Rust names.",
+      "implements": "CS-NAME-1"
+    },
+    {
+      "id": "RS-9",
+      "title": "Lint allowances carry a reason",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "strong",
+      "sources": [
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Prefer `#[expect(lint, reason = \"…\")]` over `#[allow(lint)]`; crate-wide `#![allow(…)]` added by the change needs a stated reason. When a lint says the code is dead, delete the code instead of expecting the lint.",
+      "implements": "CS-CMT-1"
+    },
+    {
+      "id": "RS-10",
+      "title": "Tests check values",
+      "tier": "structural",
+      "gate": "test-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "test-gap"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Wrong: `assert!(result.is_ok())` as the only assertion; `#[should_panic]` without `expected = \"…\"`; `thread::sleep` for ordering.\nRight: `assert_eq!` on the value or the error variant (`matches!(err, Error::NotFound { .. })`).",
+      "implements": "CS-TEST-1"
+    },
+    {
+      "id": "RS-11",
+      "title": "No global mutable state",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "enforcedBy": [],
+      "text": "Prefer `std::sync::LazyLock`/`OnceLock` over `lazy_static!`; pass configuration in rather than reading a global.",
+      "implements": "CS-CFG-2"
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-API-1",
+      "title": "No boolean behavior switches",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md",
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md"
+      ],
+      "text": "Do not switch behavior with a boolean or a vague option parameter. Write two functions, an enum, or a tagged value. A flag that only forwards to a callee the project already uses can stay."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-AI-3",
+      "title": "Leave unrelated code and comments alone",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://x.com/karpathy/status/2015883857489522876",
+        "https://github.com/astral-sh/ruff/blob/main/AGENTS.md",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+      ],
+      "text": "Do not edit code or comments the task did not ask for. Keep a useful comment a person wrote. A drive-by rename, reformat, or comment deletion is a separate change."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-AI-4",
+      "title": "One public path per item",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html",
+        "https://github.com/openai/openai-agents-python/blob/main/AGENTS.md"
+      ],
+      "text": "Export an item from one public path. When you replace an unpublished interface, edit it in place. Do not leave a compatibility shim or the old path behind."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-TYPE-4",
+      "title": "Do not delete behavior to satisfy the checker",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "correctness",
+        "maintainability"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/badlogic/pi-mono/blob/main/AGENTS.md"
+      ],
+      "text": "Do not delete behavior, weaken a type, or drop a check so the type checker or linter goes quiet. Fix the type or the call. A narrower type that still expresses the real contract is a fix, not a deletion."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-CMT-4",
+      "title": "Docs describe the result",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "text": "Comments and docs describe the finished behavior. Do not narrate the design process, write a long essay on why X lost to Y, or attach a report of which rules were followed."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-CMT-5",
+      "title": "Doc comments add what the signature does not",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://code.claude.com/docs/en/best-practices"
+      ],
+      "text": "A doc comment does not restate the signature and does not use Parameters or Returns headings. Its text has to match the function it is attached to."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-LOG-2",
+      "title": "Logs carry ids, not payloads",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "security",
+        "maintainability"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "text": "Logs and error text do not include user input, model output, request bodies, or credentials. Record a type, a count, or an id. A credential or secret in a log is a security finding."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-ERR-5",
+      "title": "Errors say what failed",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/google/adk-go/blob/main/AGENTS.md",
+        "https://steveklabnik.com/writing/the-most-important-thing-when-working-with-llms/"
+      ],
+      "text": "An error message says what failed and includes the value or type a reader needs to find it. \"failed\" with no subject is not enough."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SEC-1",
+      "title": "Permission checks stay visible",
+      "tier": "advisory",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "security"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://lucumr.pocoo.org/2025/6/12/agentic-coding/"
+      ],
+      "text": "A permission check sits in the route or handler a reader can see. Do not hide it in config or another file. This is a placement hint, not a claim that the check is missing."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SMELL-1",
+      "title": "Possible feature envy",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://martinfowler.com/bliki/CodeSmell.html"
+      ],
+      "text": "A function that mostly reads another module's data might be feature envy. Move it next to that data when the move makes the caller simpler. This is a question, not a block."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SMELL-2",
+      "title": "Possible data clumps",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://martinfowler.com/bliki/CodeSmell.html"
+      ],
+      "text": "The same group of values passed together might be a data clump. A named type helps when the group has a meaning. This is a question, not a block."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SMELL-3",
+      "title": "Possible primitive obsession",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "text": "A bare string or number that has its own rules might be primitive obsession. A small type helps when mixups are likely. This is a question, not a block."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SMELL-4",
+      "title": "Possible middle man",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://martinfowler.com/bliki/CodeSmell.html"
+      ],
+      "text": "A function that only forwards to another function might be a middle man. Call the target when the forwarder adds no name that readers need. This is a question, not a block."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SMELL-5",
+      "title": "Possible message chains",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://martinfowler.com/bliki/CodeSmell.html"
+      ],
+      "text": "A long chain of calls that walks through other objects might be a message chain. Ask the object that owns the data when the chain keeps breaking. This is a question, not a block."
+    },
+    {
+      "enforcedBy": [],
+      "id": "CS-SMELL-6",
+      "title": "Possible shotgun surgery",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md",
+        "https://martinfowler.com/bliki/CodeSmell.html"
+      ],
+      "text": "One behavior change that has to touch many distant sites might be shotgun surgery. Gather that behavior when the next change would do the same walk. This is a question, not a block."
+    },
+    {
+      "enforcedBy": [],
+      "id": "GO-11",
+      "title": "Goroutines finish, map output is ordered",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "go"
+      ],
+      "categories": [
+        "correctness",
+        "maintainability"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://learn-go.org/ai/agents-md/"
+      ],
+      "text": "Every goroutine has an exit it can actually reach. When map iteration becomes output, sort the keys first. Prefer the current standard library (slices, maps, slog) over a hand-rolled equivalent."
+    },
+    {
+      "enforcedBy": [],
+      "id": "RS-12",
+      "title": "Match your own enums exhaustively",
+      "tier": "structural",
+      "gate": "code-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "correctness"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/openai/codex/blob/rust-v0.122.0/AGENTS.md"
+      ],
+      "text": "Match an enum this crate defined without a wildcard arm. A wildcard hides a new variant. A wildcard is fine for a type you do not own."
+    },
+    {
+      "enforcedBy": [],
+      "id": "RS-13",
+      "title": "Do not port another language's shape",
+      "tier": "structural",
+      "gate": "linus-review",
+      "langs": [
+        "rust"
+      ],
+      "categories": [
+        "architecture"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://microsoft.github.io/rust-guidelines/guidelines/ai/index.html"
+      ],
+      "text": "When porting, do not copy the source language's habits: null-check helpers, factories, or class hierarchies. Use the Rust shape. A public framework interface is the exception in CS-ABS-2."
+    },
+    {
+      "enforcedBy": [],
+      "id": "TS-14",
+      "title": "Partial test data uses fromPartial",
+      "tier": "advisory",
+      "gate": "test-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/mattpocock/skills/blob/main/skills/misc/migrate-to-shoehorn/SKILL.md"
+      ],
+      "tsOnly": true,
+      "text": "Build partial test values with a typed fromPartial helper. Do not use a cast or a double cast to invent the missing fields."
+    },
+    {
+      "enforcedBy": [
+        "@typescript-eslint/no-floating-promises"
+      ],
+      "id": "TS-15",
+      "title": "Do not drop a promise",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "typescript"
+      ],
+      "categories": [
+        "error-handling",
+        "correctness"
+      ],
+      "evidence": "some",
+      "sources": [
+        "https://github.com/anomalyco/opencode/blob/dev/AGENTS.md"
+      ],
+      "text": "A promise that can reject is awaited, returned, or given an error handler. Calling an async function and discarding the promise hides the failure. When the repository enables no-floating-promises, this rule leaves the prompt."
+    },
+    {
+      "enforcedBy": [],
+      "id": "PY-15",
+      "title": "In-process tests stay in-process",
+      "tier": "advisory",
+      "gate": "test-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md"
+      ],
+      "text": "Logic that can run inside the test process is not covered by spawning a subprocess. A subprocess is for a process boundary the product actually has."
+    },
+    {
+      "enforcedBy": [],
+      "id": "PY-16",
+      "title": "Python identifiers use full words",
+      "tier": "advisory",
+      "gate": "linus-review",
+      "langs": [
+        "python"
+      ],
+      "categories": [
+        "style"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
+      ],
+      "text": "In Python, spell the role in full words. Clipped forms such as tmp, cnt, req, and cb are this rule, not CS-NAME-1. A name required by repository policy, and a short loop index, stay as they are."
+    }
+  ]
+}

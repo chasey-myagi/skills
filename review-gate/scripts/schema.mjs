@@ -6,7 +6,7 @@ export const GATE_NAMES = ["code-review", "test-review", "linus-review"];
 export const META = {
   name: "review-gate",
   description:
-    "3-gate review: code-review / test-review / linus-review with structured findings, human callouts, and optional repro. Args: { repoDir, mode, base, head, paths, context, constraints, repro, reproCap, runDir, benchmarkHarness }.",
+    "3-gate review: code-review / test-review / linus-review with structured findings, human callouts, and optional repro. Args: { repoDir, mode, base, head, paths, context, constraints, repro, reproCap, runDir, benchmarkHarness, codingStyle }.",
   phases: [
     { title: "Review", detail: "3 independent gates with inlined sibling rubrics" },
     { title: "Verify", detail: "conditional red-light repro of falsifiable blocking findings" },
@@ -91,6 +91,7 @@ const FINDING_ITEM = {
     expected: { type: "string" },
     actual: { type: "string" },
     suggestedFix: { type: "string" },
+    rule: { type: "string" },
   },
 };
 
@@ -322,8 +323,42 @@ export function normalizeFinding(raw) {
       actual: typeof raw.actual === "string" ? raw.actual : "",
       evidence: raw.evidence,
       suggestedFix: typeof raw.suggestedFix === "string" ? raw.suggestedFix : "",
+      ...(typeof raw.rule === "string" && raw.rule ? { rule: raw.rule } : {}),
     },
   };
+}
+
+function styleIssues(assigned, findings, style) {
+  const errors = [];
+  for (const finding of findings) {
+    if (finding.category === "style" && finding.blocking) errors.push(`finding ${finding.id} category style cannot block`);
+    if (!finding.rule) continue;
+    if (!style || style.missing) continue;
+    if (style.mode === "off") {
+      errors.push(`finding ${finding.id} cites ${finding.rule} while coding style is off`);
+      continue;
+    }
+    const rule = (style.catalog || []).find((item) => item.id === finding.rule);
+    if (!rule) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} is unknown`);
+      continue;
+    }
+    if (rule.gate !== assigned) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} belongs to ${rule.gate}`);
+      continue;
+    }
+    if (!(style.allowed?.[assigned] || []).includes(finding.rule)) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} is not loaded for this run`);
+      continue;
+    }
+    if (rule.tier === "advisory" && finding.blocking) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} is advisory and cannot block`);
+    }
+    if (rule.tier === "hard" && Array.isArray(rule.categories) && rule.categories.length && !rule.categories.includes(finding.category)) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} does not allow category ${finding.category}`);
+    }
+  }
+  return errors;
 }
 
 export function normalizeCallout(raw) {
@@ -390,6 +425,7 @@ export function aggregateFindings(reviews) {
       const id = fingerprintFinding(f, { gate: review.gate });
       const existing = byId.get(id);
       const source = { gate: review.gate, id: f.id };
+      if (f.rule) source.rule = f.rule;
       if (existing) {
         if (!existing.sources.some((s) => s.gate === source.gate && s.id === source.id)) {
           existing.sources.push(source);
@@ -455,7 +491,7 @@ export function isRoutable(finding, { benchmarkHarness } = {}) {
   return BEHAVIORAL.has(finding.category);
 }
 
-export function evaluateGate(assigned, raw) {
+export function evaluateGate(assigned, raw, options = {}) {
   if (raw == null) {
     return {
       gate: assigned,
@@ -500,7 +536,7 @@ export function evaluateGate(assigned, raw) {
     if (n.ok) humanCallouts.push(n.callout);
     else findingErrors.push(...n.errors);
   }
-  const semanticErrors = [...semanticCheck(assigned, raw, findings), ...findingErrors];
+  const semanticErrors = [...semanticCheck(assigned, raw, findings), ...findingErrors, ...styleIssues(assigned, findings, options.style)];
   const identityOk = raw.gate === assigned;
   const semanticOk = identityOk && semanticErrors.length === 0;
   return {

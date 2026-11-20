@@ -16,3 +16,5 @@ The same source texts are also reviewed by code-review under that gate's own cal
 The Linus report identified wording that conflated severity with the size of a repair. The rubric now states that severity does not require a large change. The clarification pass left B/C/F and the Linus outcomes unchanged.
 
 `examples/` reports are format illustrations. The wording edit that tells standalone calls to use the mail-style report and composite mode to use the parent JSON schema does not change the five ratings. These saved judgments were not re-run.
+
+Coding-style cases [H, J, and L](coding-style.json) are expected outcomes, not new model transcripts. H is a non-blocking single-implementation interface (`GO-2`). J is an advisory Python abbreviation (`PY-16`); that used to be cited as `CS-NAME-1` before full words moved to the Python pack. L cites repository policy for `cfg` and `svc` and reports no name finding. A–F were not re-run.

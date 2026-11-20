@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defaultSkillsRoot, freezeKit, loadCompanionSet, packageDir } from "./companions.mjs";
 import { reviewerPrompt } from "./prompt.mjs";
+import { loadCodingStyle, parseCodingStyle, styleIsRequired } from "./style.mjs";
 import { renderHandoff } from "./handoff.mjs";
 import { GATE_NAMES, GATE_SCHEMA, SCHEMA_VERSION, sha256 } from "./schema.mjs";
 import { captureTarget, git, pathInsideRepo, unifiedDiff, writeSnapshot } from "./source.mjs";
@@ -23,7 +24,7 @@ export function parseArgs(raw) {
   if (A == null || typeof A !== "object" || Array.isArray(A)) {
     throw new Error("review-gate: args must be a JSON object");
   }
-  const allowed = new Set(["repoDir", "mode", "base", "head", "paths", "context", "constraints", "repro", "reproCap", "runDir", "benchmarkHarness"]);
+  const allowed = new Set(["repoDir", "mode", "base", "head", "paths", "context", "constraints", "repro", "reproCap", "runDir", "benchmarkHarness", "codingStyle"]);
   const unknown = Object.keys(A).filter(key => !allowed.has(key));
   if (unknown.length) throw new Error(`review-gate: unknown args: ${unknown.join(", ")}`);
   for (const key of ["context", "constraints", "benchmarkHarness"]) {
@@ -52,6 +53,7 @@ export function parseArgs(raw) {
     }
     reproCap = A.reproCap;
   }
+  const styleSelection = parseCodingStyle(A.codingStyle);
   return {
     repoDir: A.repoDir,
     mode,
@@ -64,6 +66,8 @@ export function parseArgs(raw) {
     reproCap,
     runDir: A.runDir,
     benchmarkHarness: A.benchmarkHarness,
+    codingStyle: A.codingStyle,
+    styleSelection,
   };
 }
 
@@ -166,6 +170,7 @@ export async function prepareReview(rawArgs, runtime = {}) {
   if (repoReal !== top) throw new Error("review-gate: repoDir must be the Git repository root; use paths to select a subdirectory");
   const skillsRoot = runtime.skillsRoot ? realpathSync(resolve(runtime.skillsRoot)) : defaultSkillsRoot();
   const companions = loadCompanionSet({ reviewGateDir: packageDir(), skillsRoot });
+  if (styleIsRequired(args.styleSelection)) loadCodingStyle({ skillsRoot, repo: repoReal, fileContents: [], selection: args.styleSelection });
   const runDir = createRunDir(args.runDir, repoReal);
   const result = emptyResult();
   result.constraints = args.constraints;
@@ -206,8 +211,24 @@ export async function prepareReview(rawArgs, runtime = {}) {
     const diffHash = sha256(diff);
     result.artifacts.diffPath = diffPath;
     result.artifacts.diffHash = diffHash;
-    const kit = freezeKit(runDir, companions.files);
+    const codingStyle = loadCodingStyle({
+      skillsRoot,
+      repo: repoReal,
+      fileContents: captured.fileContents,
+      selection: args.styleSelection,
+    });
+    const kit = freezeKit(runDir, [...companions.files, ...codingStyle.kitFiles]);
     result.scope.kit = kit;
+    result.scope.codingStyle = {
+      mode: codingStyle.mode,
+      profile: codingStyle.profile,
+      missing: codingStyle.missing,
+      languages: codingStyle.languages,
+      generated: codingStyle.generated,
+      suppressed: codingStyle.suppressed,
+      files: codingStyle.kitFiles.map(({ path, hash }) => ({ path, hash })),
+      tiers: codingStyle.tiers,
+    };
     result.artifacts.kitDir = join(runDir, "meta", "kit");
     persist(runDir, result);
 
@@ -218,7 +239,7 @@ export async function prepareReview(rawArgs, runtime = {}) {
       "linus-review": rubricText["linus-review/linus-reviewer.md"],
     };
     const reproRubric = rubricText["repro/repro-agent.md"];
-    const promptArgs = { ...normalized, diffPath, diffHash };
+    const promptArgs = { ...normalized, diffPath, diffHash, styleSections: codingStyle.sections };
     const prompts = GATE_NAMES.map((gate) => reviewerPrompt(gate, rubrics[gate], captured, snapshotDir, promptArgs));
     if (prompts.some((prompt) => Buffer.byteLength(prompt) > 256 * 1024)) {
       throw new Error("review prompt exceeds 256 KiB; narrow the scope or reduce supplied context/policy");
@@ -235,6 +256,12 @@ export async function prepareReview(rawArgs, runtime = {}) {
       diffPath,
       diffHash,
       captured: serializableCaptured(captured),
+      style: {
+        mode: codingStyle.mode,
+        missing: codingStyle.missing,
+        catalog: codingStyle.catalog,
+        allowed: codingStyle.allowed,
+      },
     };
     writeFileSync(join(runDir, "meta", "prepare-state.json"), JSON.stringify(saved, null, 2) + "\n");
     return {
@@ -250,6 +277,12 @@ export async function prepareReview(rawArgs, runtime = {}) {
       rubrics,
       reproRubric,
       promptArgs,
+      style: {
+        mode: codingStyle.mode,
+        missing: codingStyle.missing,
+        catalog: codingStyle.catalog,
+        allowed: codingStyle.allowed,
+      },
     };
   } catch (err) {
     result.executionStatus = "incomplete";

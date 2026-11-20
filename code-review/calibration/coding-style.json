@@ -1,0 +1,16 @@
+[
+  {
+    "id": "G",
+    "mode": "diff",
+    "gates": ["code-review"],
+    "expected": "FAIL; CS-ERR-2 / TS-3, P1 blocking, error-handling, repro-eligible",
+    "input": "File src/orders.ts, newly added. Contract: listOrders returns the user's orders or fails.\n```ts\nexport async function listOrders(db: Db, userId: string): Promise<Order[]> {\n  try {\n    return await db.orders.findMany({ where: { userId } });\n  } catch {\n    return [];\n  }\n}\n```"
+  },
+  {
+    "id": "I",
+    "mode": "diff",
+    "gates": ["code-review"],
+    "expected": "FAIL; RS-1, P1 blocking, error-handling",
+    "input": "File src/config.rs in a library crate, changed from returning Result to:\n```rust\npub fn port(raw: &str) -> u16 {\n    raw.trim().parse::<u16>().unwrap()\n}\n```\nraw comes from a user-edited config file."
+  }
+]

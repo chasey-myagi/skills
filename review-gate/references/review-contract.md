@@ -10,6 +10,18 @@ Diff and working-tree reviews attribute findings to the selected changes. Snapsh
 
 Priority describes urgency. `blocking` says whether the current checkpoint can pass. Human callouts describe relevant changes without asserting a defect. A migration can therefore be a callout while an independently established data-loss bug in that migration is a finding. Keep both records; do not turn the callout itself into an instruction to remove the migration.
 
+## Coding-style findings
+
+A coding-style finding cites one rule id from the run's frozen index in `rule`. The rule's tier bounds the decision. A behavior, test-gap, or structure finding still needs its own evidence.
+
+| Tier | Admission |
+|---|---|
+| hard | Same as a behavior or test-gap finding. A swallowed error or a fabricated success names the trigger, the expected failure, and the actual result, and can enter repro |
+| structural | Blocks only when the selected change introduces or worsens the pattern and the finding names the concrete cost and the simpler alternative. Otherwise it stays advisory |
+| advisory | Does not block and does not enter the fix queue. Category `style` does not block even when no rule is cited |
+
+A gate cites only its own rules, and only rules loaded for the languages in that run. When two gates describe the same behavior through different rules, the claim merges and each source keeps its rule. A rule with `enforcedBy` stays in the prompt until the repository runs that linter; the handoff then names the linter instead. Target repository policy that contradicts a rule wins: the reviewer cites the policy line and does not report the rule.
+
 ## Preserve judgment and evidence separately
 
 Three successful CLI calls do not prove three valid review gates. Match each result to its assigned gate, retain every original report and require coherent verdicts. Scores, weights, N/A explanations, final score and concrete threshold failures must survive aggregation. A human summary cannot silently revise them.
@@ -53,3 +65,6 @@ Use these scenarios when changing the composition. Controlled responses can test
 | A gate is missing, misidentified, inconsistent or the scope drifts | No valid overall PASS is emitted |
 | Repro reports REFUTED without parent acceptance | Original blockers and gate verdicts remain, evidence is available to inspect |
 | The review finishes or an execution fails | Available findings, pending work and evidence survive in artifacts |
+| A gate marks an advisory coding-style finding as blocking | The report is invalid and cannot pass or fail the checkpoint |
+| A diff introduces `catch {}` that returns an empty list | code-review reports a hard CS-ERR-2 blocker that can reach repro |
+| Target policy mandates a name the reference calls clipped | No naming finding; the policy wins |

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "H",
+    "mode": "diff",
+    "gates": ["linus-review"],
+    "expected": "PASS (Looks reasonable.); GO-2 structural, P2, non-blocking",
+    "input": "File store/user.go, newly added; no other implementation or consumer interface exists.\n```go\ntype UserStore interface {\n\tGet(ctx context.Context, id string) (User, error)\n}\n\ntype pgUserStore struct{ db *sql.DB }\n\nfunc NewUserStore(db *sql.DB) UserStore { return &pgUserStore{db: db} }\n```"
+  },
+  {
+    "id": "J",
+    "mode": "diff",
+    "gates": ["linus-review"],
+    "expected": "PASS (Applied.); PY-16 advisory P3, at most 3 instances. tmp and cnt are the Python full-word rule, not common CS-NAME-1.",
+    "input": "File app/stats.py, newly added.\n```python\ndef calc(d: list[float]) -> float:\n    tmp = sum(d)\n    cnt = len(d)\n    return tmp / cnt if cnt else 0.0\n```\nContract: mean of request latencies in seconds; empty input returns 0.0."
+  },
+  {
+    "id": "L",
+    "mode": "snapshot",
+    "gates": ["linus-review"],
+    "expected": "PASS; no CS-NAME-1 or PY-16 finding; reviewer cites AGENTS.md",
+    "policy": "AGENTS.md: Use `cfg` for configuration values and `svc` for service handles across the codebase.",
+    "input": "File internal/app/run.go.\n```go\nfunc Run(ctx context.Context, cfg Config, svc *Service) error {\n\treturn svc.Start(ctx, cfg.Addr)\n}\n```"
+  }
+]

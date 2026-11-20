@@ -16,3 +16,5 @@ Inputs: [raw cases](cases.json). Actual outputs: [code](code-report.md), [clarif
 Final wording check: [code clarification](code-clarified.md). A's Requirements Fit changed from N/A to 8.0 because the user-supplied behavior is an independent requirement; its verdict stayed PASS. The original output and this adjustment are both retained. B/C/F judgments stayed unchanged.
 
 The wording edit that tells standalone calls to use Markdown and composite mode to use the parent JSON schema does not change weights, thresholds, or what counts as a finding. These saved judgments were not re-run.
+
+Coding-style cases [G and I](coding-style.json) are expected outcomes for a reviewer that also has the code-review style slice. G is a failing fabricated success (`CS-ERR-2` / `TS-3`). I is a failing library `unwrap` on user input (`RS-1`). No fresh model transcript was produced for them. A–F were not re-run: their weights and thresholds did not change, and a finding without a `rule` is still admitted the same way.

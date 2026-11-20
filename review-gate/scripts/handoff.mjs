@@ -9,7 +9,14 @@ function dump(obj) {
 export function renderHandoff(result) {
   const scope = result.scope || {};
   const blockers = (result.findings || []).filter((f) => f.blocking);
-  const advisory = (result.findings || []).filter((f) => !f.blocking);
+  const tiers = result.scope?.codingStyle?.tiers || {};
+  const advisory = [];
+  const styleAdvisory = [];
+  for (const finding of (result.findings || []).filter((f) => !f.blocking)) {
+    const rule = (finding.sources || []).map((s) => s.rule).find((id) => id && tiers[id] === "advisory");
+    if (rule) styleAdvisory.push({ finding, rule });
+    else advisory.push(finding);
+  }
   const callouts = result.humanCallouts || [];
   const ver = result.verification || {};
   const sections = [];
@@ -42,7 +49,9 @@ export function renderHandoff(result) {
   sections.push(blockers.length
     ? blockers.map((f) => {
       const src = (f.sources || []).map((s) => `${s.gate}/${s.id}`).join(", ");
-      return `- ${f.id} [${src}] ${f.priority} ${f.category} ${f.path}${f.line != null ? ":" + f.line : ""} — ${f.title}\n  trigger: ${f.trigger}\n  expected: ${f.expected}\n  actual: ${f.actual}\n  evidence: ${f.evidence}`;
+      const rules = [...new Set((f.sources || []).map((s) => s.rule).filter(Boolean))];
+      const ruleSuffix = rules.length ? ` rule=${rules.join(",")}` : "";
+      return `- ${f.id} [${src}] ${f.priority} ${f.category} ${f.path}${f.line != null ? ":" + f.line : ""} — ${f.title}${ruleSuffix}\n  trigger: ${f.trigger}\n  expected: ${f.expected}\n  actual: ${f.actual}\n  evidence: ${f.evidence}`;
     }).join("\n")
     : "(none)");
 
@@ -53,6 +62,25 @@ export function renderHandoff(result) {
   sections.push(advisory.length
     ? advisory.map((f) => `- ${f.id} ${f.title} (${f.path})`).join("\n")
     : "(none)");
+
+  if (styleAdvisory.length) {
+    const groups = new Map();
+    for (const item of styleAdvisory) {
+      if (!groups.has(item.rule)) groups.set(item.rule, []);
+      groups.get(item.rule).push(item.finding);
+    }
+    const body = [...groups].map(([rule, findings]) => {
+      const rows = findings.map((f) => `- ${f.id} ${f.title} (${f.path})`).join("\n");
+      return `### ${rule} (${findings.length})\n${rows}`;
+    }).join("\n\n");
+    sections.push("## Optional improvements (coding style)");
+    sections.push(body);
+  }
+  const suppressed = result.scope?.codingStyle?.suppressed || [];
+  if (suppressed.length) {
+    sections.push("## Lint already covers");
+    sections.push(suppressed.map((rule) => `- ${rule.id} (${rule.enforcedBy.join(", ")})`).join("\n"));
+  }
 
   sections.push("## Human callouts");
   sections.push(callouts.length
