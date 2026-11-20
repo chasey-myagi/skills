@@ -12,7 +12,7 @@
 
 ```bash
 npx --yes skills@1.5.23 add /absolute/path/to/skills \
-  --global --skill issue-fix tdd code-review test-review linus-review repro workflow-run review-gate \
+  --global --skill issue-fix tdd code-review test-review linus-review coding-style repro workflow-run review-gate \
   --agent claude-code grok codex cursor --yes
 ```
 
@@ -40,31 +40,37 @@ npx --yes skills@1.5.23 add /absolute/path/to/skills \
 
 派一个**全新 agent** 当审查员：它不继承你的会话历史、不知道代码是谁写的——这正是在自己代码上自查最缺的东西。评分带置信度门（不确定不报）和 **N/A 维度**（不适用的维度诚实标 N/A、权重重分配，不硬凑分污染 PASS 结论）。
 
-- **review-gate** — 组合三门：固定已提交变更、未提交修改或文件快照的范围，保留结构化 findings 与知情提示，把各门的行为问题送到 repro，并生成可追踪的修复交接。需要同目录安装下列配套包；单独审一种角度仍用相应 review skill。默认在宿主里用宿主自己的模型起三个只读子 agent，不调用 `claude` / `codex` CLI。`workflow-run` 改为可选，只留给测试和明确要求的非 claude / 非 codex 无头运行。pi 没有子 agent，组合门暂不支持在 pi 里跑。
+- **review-gate** — 组合三门：固定已提交变更、未提交修改或文件快照的范围，保留结构化 findings 与知情提示，把各门的行为问题送到 repro，并生成可追踪的修复交接。需要同目录安装下列配套包；单独审一种角度仍用相应 review skill。默认在宿主里用宿主自己的模型起三个只读子 agent，不调用 `claude` / `codex` CLI。`workflow-run` 改为可选，只留给测试和明确要求的非 claude / 非 codex 无头运行。pi 没有子 agent，组合门暂不支持在 pi 里跑。同目录有 `coding-style` 时，prepare 会按语言把规则写进 prompt；没有就跳过。显式指定语言或 `brief` 时，缺这个包会在派发前失败。
 
   ```bash
   npx skills@latest add chasey-myagi/skills \
-    --skill review-gate code-review test-review linus-review repro
+    --skill review-gate code-review test-review linus-review coding-style repro
   ```
 
   范围、结果与运行方式见 [review-gate](review-gate/SKILL.md)。`scripts/run.mjs --print-workflow` 仍可在装了可选的 `workflow-run` 时生成薄入口，执行逻辑仍只有一份。
 
-- **code-review** — 代码评审：6 维加权评分 + 优先级问题清单 + PASS/FAIL 质量门。[看真实报告 →](code-review/examples/sample-pass.md)
+- **code-review** — 代码评审：6 维加权评分 + 优先级问题清单 + PASS/FAIL 质量门。同目录有 `coding-style` 时，把 code-review 那一册内联进 rubric 后面；没有就跳过并在报告里注明。[看真实报告 →](code-review/examples/sample-pass.md)
 
   ```
   npx skills@latest add chasey-myagi/skills/code-review
   ```
 
-- **test-review** — 测试评审：6 维评分 + 具体缺失场景清单。在父流程指定的检查点评估测试质量；与垂直 TDD 配合时审当前切片或完整套件。[看真实报告 →](test-review/examples/sample-fail.md)
+- **test-review** — 测试评审：6 维评分 + 具体缺失场景清单。在父流程指定的检查点评估测试质量；与垂直 TDD 配合时审当前切片或完整套件。同目录有 `coding-style` 时内联 test-review 那一册；没有就跳过。[看真实报告 →](test-review/examples/sample-fail.md)
 
   ```
   npx skills@latest add chasey-myagi/skills/test-review
   ```
 
-- **linus-review** — Linus 老爷子风格的毒舌 review：不留情面，但每句吐槽都指向真问题、给可执行的 fix。[看真实报告 →](linus-review/examples/sample-report.md)
+- **linus-review** — Linus 老爷子风格的毒舌 review：不留情面，但每句吐槽都指向真问题、给可执行的 fix。同目录有 `coding-style` 时内联 linus-review 那一册；没有就跳过。[看真实报告 →](linus-review/examples/sample-report.md)
 
   ```
   npx skills@latest add chasey-myagi/skills/linus-review
+  ```
+
+- **coding-style** — 写代码和审查时共用的参考规则，按门、按语言分册。它不评分、不拦截。仓库自己的规范优先。`local-rules.md` 不会自动注入。[入口](coding-style/SKILL.md)
+
+  ```
+  npx skills@latest add chasey-myagi/skills/coding-style
   ```
 
 ## Verify

@@ -71,6 +71,8 @@ Read `test-reviewer.md` (it sits next to this file in the skill directory) for t
 
 [paste the FULL contents of test-reviewer.md here — the dispatched reviewer can read repo files, but it has no idea where this skill is installed (skill dirs live outside the repo), so the rubric must arrive inline, not as a path reference. Repo files are different: pass paths and let the reviewer read them itself]
 
+[optional coding-style: if the sibling skill is installed, paste rules/test-review/common.md and the language file for each language in this change. If it is absent, omit this section.]
+
 ## 本次审核输入
 
 ### 测试文件
@@ -95,6 +97,8 @@ Read `test-reviewer.md` (it sits next to this file in the skill directory) for t
 ```
 
 **Important**: The reviewer reads `test-reviewer.md` for scoring criteria, dimensions, and report format. Do NOT duplicate the scoring methodology in this file.
+
+If [coding-style](../coding-style/SKILL.md) is installed beside this skill, also inline [test-review/common.md](../coding-style/rules/test-review/common.md) and the matching language file in that directory (`python.md`, `typescript.md`, `go.md`, `rust.md`) after the rubric. If the sibling is absent, skip it, say so in the report, and review as before. Repository policy overrides those rules. A missing coding-style skill is not a broken test-review install.
 
 ## Step 4: Receive and Present Report
 

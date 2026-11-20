@@ -43,6 +43,8 @@ session root 与源码目标可以不同，使用绝对路径和 `git -C <source
 ```
 [linus-reviewer.md 内容]
 
+[可选 coding-style：兄弟 skill 已安装时，贴上 rules/linus-review/common.md 和本次语言对应的文件。没安装就省掉这一段。]
+
 ## 本次审查
 
 ### 代码范围
@@ -59,6 +61,8 @@ session root 与源码目标可以不同，使用绝对路径和 `git -C <source
 
 你是只读审查员：只阅读、吐槽、给建议，不修改任何文件、不执行变更。开始审查。记住：Talk is cheap. Show me the code.
 ```
+
+如果旁边装了 [coding-style](../coding-style/SKILL.md)，在人设后面再内联 [linus-review/common.md](../coding-style/rules/linus-review/common.md) 以及该目录里本次语言对应的文件（`python.md`、`typescript.md`、`go.md`、`rust.md`）。没装就跳过，并在报告里写明，审查方式和原来一样。仓库自己的规范优先。缺 coding-style 不算 linus-review 安装失败。
 
 ## 输出格式
 
