@@ -10,7 +10,7 @@ description: >
 
 # Review Gate
 
-One scope, three independent judgments, one preserved result. The companion reviewer skills own judgment and scoring; `workflow-run` owns CLI execution; this skill owns scope, aggregation and handoff. Review completion, review PASS, accepted reproduction evidence, CI and publication authorization are separate facts.
+One scope, three independent judgments, one preserved result. The companion reviewer skills own judgment and scoring. This skill owns scope, prompt construction, aggregation and handoff. `workflow-run` is an optional headless adapter, not the default. Review completion, review PASS, accepted reproduction evidence, CI and publication authorization are separate facts.
 
 ## Prepare the review
 
@@ -32,18 +32,17 @@ Policy files may link to other policy files inside the repository. Committed rev
 
 ## Run
 
-Install `review-gate`, `code-review`, `test-review`, `linus-review`, and `repro` as sibling packages. Use Node 18 or later. Resolve this skill's location from the installation; do not assume another user's home directory.
+Install the sibling files named in `companions.json` (`code-review`, `test-review`, `linus-review`, and `repro`). Use Node 18 or later. Resolve this skill's location from the installation; do not assume another user's home directory.
 
-**Default execution policy (sub-agent + self-model; no `claude` CLI / `codex` CLI):**
-- When an agent is asked to run `review-gate`, dispatch **three independent, strictly read-only sub-agents** (`code-review`, `test-review`, `linus-review`) inside that agent's own runtime using its **self-model** (the agent's own current model).
-- **Do NOT invoke `claude` CLI or `codex` CLI** (`--backend claude` / `--backend codex` via `workflow-run` or direct shell calls) to execute `review-gate`.
-- Reuse this package's deterministic engine modules (`scripts/source.mjs`, `scripts/schema.mjs`, `scripts/handoff.mjs`) to:
-  1. Freeze the exact target scope (`captureTarget`, `writeSnapshot`, `unifiedDiff`, `sha256`), policy documents, and manifest into a fresh run directory outside the source repository.
-  2. Build the three per-gate prompts with the inlined sibling rubrics (`code-review/code-reviewer.md`, `test-review/test-reviewer.md`, `linus-review/linus-reviewer.md`), frozen diff/snapshot pointers, and `GATE_SCHEMA`.
-  3. Launch three fresh, independent, read-only sub-agents on the agent's own model (never forwarding the author's development conversation or cross-gate results), save each raw JSON report under `<runDir>/reports/<gate>.json`, and aggregate with `evaluateGate`, `aggregateFindings`, `aggregateCallouts`, drift detection, and `renderHandoff` to produce `<runDir>/review-result.json` and `<runDir>/handoff.md`.
-- For uncommitted work use `mode: "working-tree"` with task `paths`; for a snapshot use `mode: "snapshot"` with required `paths`. `scripts/run.mjs` / `workflow-run` remains only as an internal adapter for tests or explicitly requested non-`claude`/non-`codex` headless workflows; never default to `--backend claude` or `--backend codex`.
+**Default: prepare, then three read-only sub-agents, then finalize.** Use the host's own current model. Do not invoke the `claude` or `codex` CLI.
 
-**pi cannot run this composite gate.** pi reads installed skills but has no sub-agents, so it cannot dispatch the three reviewers. Do not work around that by shelling out to the `claude` or `codex` CLI.
+1. `node <review-gate>/scripts/prepare.mjs --args '{...}'` freezes the scope and the sibling kit, writes `prompts/<gate>.md` plus `prompts/schema.json`, and prints the run directory. For uncommitted work use `mode: "working-tree"` with task `paths`; for a snapshot use `mode: "snapshot"` with required `paths`. `node <review-gate>/scripts/prepare.mjs --check` only verifies companions and does not create a run.
+2. Dispatch three fresh, independent, strictly read-only sub-agents, one per prompt file, on this host's own model. Do not forward the author's development conversation or another gate's result. Save each raw JSON report at `<runDir>/reports/<gate>.json`.
+3. `node <review-gate>/scripts/finalize.mjs --run-dir <runDir>` evaluates those reports, aggregates findings, checks drift, and writes `review-result.json` and `handoff.md`.
+
+Claude Code, Codex, and kimi-code can do step 2 with their own sub-agent facility. This skill does not name a model or a CLI flag for them. **pi cannot run this composite gate:** pi can read the installed skill, but it has no sub-agents, so it cannot dispatch the three reviewers. Do not work around that by shelling out to the `claude` or `codex` CLI.
+
+`scripts/run.mjs` remains for tests and an explicitly requested headless run. It needs the optional `workflow-run` package. If that package is absent, `run.mjs` exits and points back at prepare / finalize. Never default to `--backend claude` or `--backend codex`.
 
 ## Read the result and continue
 

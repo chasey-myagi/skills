@@ -395,8 +395,14 @@ export function detectDrift(args, repo, captured, snapshotDir) {
   }
   const sets = [[snapshotDir, captured.fileContents.filter(f => f.bytes !== null)]];
   if (captured.mode === "working-tree") {
-    for (const [dir, field] of [["snapshot-base", "baseBytes"], ["snapshot-index", "indexBytes"]]) {
-      sets.push([join(dirname(snapshotDir), dir), captured.fileContents.filter(f => f[field] !== null).map(f => ({ path: f.path, hash: sha256(f[field]) }))]);
+    for (const [dir, field, hashField] of [["snapshot-base", "baseBytes", "baseHash"], ["snapshot-index", "indexBytes", "indexHash"]]) {
+      const entries = captured.fileContents
+        .filter(f => (f[hashField] && f[hashField] !== "deleted") || f[field] != null)
+        .map(f => ({
+          path: f.path,
+          hash: f[hashField] && f[hashField] !== "deleted" ? f[hashField] : sha256(f[field]),
+        }));
+      sets.push([join(dirname(snapshotDir), dir), entries]);
     }
   }
   for (const [root, expected] of sets) {
