@@ -54,8 +54,8 @@ if (!scriptPath) { usage(); process.exit(1); }
 
 function usage() {
   err(`workflow-run: run a Claude Code-style workflow script on any agent CLI backend.
-usage: node run.mjs <workflow.js> [--args '<json>'] [--backend claude|codex|kimi|grok]
-       [--model <m>] [--route '<label-glob>=<backend>[:<model>]']...
+usage: node run.mjs <workflow.js> --backend claude|codex|kimi|grok
+       [--args '<json>'] [--model <m>] [--route '<label-glob>=<backend>[:<model>]']...
        [--concurrency N] [--timeout SECONDS] [--cwd DIR] [--effort E]
        [--status-file PATH] [--task-id ID] [--verbose]
 
@@ -68,7 +68,10 @@ dangling symlink) and updated only by this run. --task-id is stored in that
 sidecar; without --status-file it is harmless metadata on stderr.`);
 }
 
-const DEFAULT_BACKEND = flags.backend || process.env.WORKFLOW_RUN_BACKEND || "claude";
+const DEFAULT_BACKEND = flags.backend || process.env.WORKFLOW_RUN_BACKEND;
+if (!DEFAULT_BACKEND) {
+  die("no backend selected. Pass --backend claude|codex|kimi|grok (or set WORKFLOW_RUN_BACKEND). There is no silent default — dispatching to a CLI that is not the requesting host's own model is a decision the caller must make explicitly.");
+}
 const DEFAULT_TIMEOUT_MS = (flags.timeout || 1200) * 1000;
 const CONCURRENCY = flags.concurrency || 6;
 // Turn budget for grok's single-turn headless modes; see the grok adapter.

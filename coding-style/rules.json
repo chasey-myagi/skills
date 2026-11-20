@@ -910,7 +910,7 @@
         "https://github.com/pydantic/pydantic-ai/blob/main/AGENTS.md"
       ],
       "enforcedBy": [],
-      "text": "Fold repetitive cases into `pytest.mark.parametrize`. No `time.sleep` to order events; use `asyncio.Event`, barriers or fake clocks. Shared fixtures live in `conftest.py` or a fixtures module; a test file never imports another test file. Logic that can run in-process is not tested by spawning a subprocess.",
+      "text": "Fold repetitive cases into `pytest.mark.parametrize`. No `time.sleep` to order events; use `asyncio.Event`, barriers or fake clocks. Shared fixtures live in `conftest.py` or a fixtures module; a test file never imports another test file.",
       "implements": "CS-TEST-4"
     },
     {
@@ -1686,14 +1686,13 @@
         "*"
       ],
       "categories": [
-        "security",
         "maintainability"
       ],
       "evidence": "some",
       "sources": [
         "https://github.com/google/adk-go/blob/main/AGENTS.md"
       ],
-      "text": "Logs and error text do not include user input, model output, request bodies, or credentials. Record a type, a count, or an id. A credential or secret in a log is a security finding."
+      "text": "Logs and error text record a type, a count, or an id — not user input, model output, or request bodies. Oversized payloads in logs are a readability and cost problem."
     },
     {
       "enforcedBy": [],
@@ -1945,13 +1944,13 @@
       "enforcedBy": [],
       "id": "PY-15",
       "title": "In-process tests stay in-process",
-      "tier": "advisory",
+      "tier": "structural",
       "gate": "test-review",
       "langs": [
         "python"
       ],
       "categories": [
-        "style"
+        "test-gap"
       ],
       "evidence": "single",
       "sources": [
@@ -1976,6 +1975,24 @@
         "https://github.com/sgl-project/sglang-omni/blob/main/.claude/skills/code-review/coding-style.md"
       ],
       "text": "In Python, spell the role in full words. Clipped forms such as tmp, cnt, req, and cb are this rule, not CS-NAME-1. A name required by repository policy, and a short loop index, stay as they are."
+    },
+    {
+      "id": "CS-SEC-2",
+      "title": "No credentials or secrets in logs or errors",
+      "tier": "hard",
+      "gate": "code-review",
+      "langs": [
+        "*"
+      ],
+      "categories": [
+        "security"
+      ],
+      "evidence": "single",
+      "sources": [
+        "https://github.com/google/adk-go/blob/main/AGENTS.md"
+      ],
+      "enforcedBy": [],
+      "text": "A credential, token, key, or secret must never appear in a log line, error message, or exception payload — not even partially or 'temporarily'. Redact at the source, never downstream. A secret in a log is a blocking security finding."
     }
   ]
 }

@@ -79,14 +79,14 @@ test("each gate prompt contains only that gate's rules", async () => {
   const { prepareReview } = await import("../scripts/prepare.mjs");
   const state = await prepareReview({ repoDir: repo, mode: "diff", base, head: sha(repo), repro: false, runDir: freshRunDir() });
   const byGate = Object.fromEntries(GATE_NAMES.map((gate, index) => [gate, state.prompts[index]]));
-  assert.match(byGate["linus-review"], /### CS-ABS-1 ·/);
-  assert.doesNotMatch(byGate["linus-review"], /### CS-ERR-1 ·/);
-  assert.match(byGate["code-review"], /### CS-ERR-1 ·/);
-  assert.doesNotMatch(byGate["code-review"], /### CS-NAME-1 ·/);
-  assert.match(byGate["test-review"], /### CS-TEST-1 ·/);
-  assert.match(byGate["test-review"], /### PY-14 ·/);
-  assert.doesNotMatch(byGate["test-review"], /### CS-ABS-1 ·/);
-  assert.doesNotMatch(byGate["code-review"], /### PY-14 ·/);
+  assert.match(byGate["linus-review"], /### CS-ABS-1 \[structural\] ·/);
+  assert.doesNotMatch(byGate["linus-review"], /### CS-ERR-1 \[hard\] ·/);
+  assert.match(byGate["code-review"], /### CS-ERR-1 \[hard\] ·/);
+  assert.doesNotMatch(byGate["code-review"], /### CS-NAME-1 \[advisory\] ·/);
+  assert.match(byGate["test-review"], /### CS-TEST-1 \[hard\] ·/);
+  assert.match(byGate["test-review"], /### PY-14 \[structural\] ·/);
+  assert.doesNotMatch(byGate["test-review"], /### CS-ABS-1 \[structural\] ·/);
+  assert.doesNotMatch(byGate["code-review"], /### PY-14 \[structural\] ·/);
 });
 
 test("rule field violations are invalid and a finding without a rule is unchanged", () => {
@@ -107,6 +107,25 @@ test("rule field violations are invalid and a finding without a rule is unchange
   assert.equal(after.verdict, "FAIL");
   assert.equal(before.findings[0].rule, undefined);
   assert.equal(after.semanticOk, true);
+});
+
+test("finding priority must match the cited rule's tier", () => {
+  const style = styleFor(["python"]);
+  const bad = (gate, partial, use = style) =>
+    evaluateGate(gate, failReport(gate, [finding(partial)]), { style: use }).semanticErrors.join("\n");
+  // PY-9 is advisory (P3 only); PY-15 is structural (P2/P3); PY-3 is hard (P0–P2).
+  assert.match(bad("code-review", { rule: "PY-9", priority: "P1", blocking: false, category: "style" }), /advisory.*expects.*P3/);
+  assert.match(bad("test-review", { rule: "PY-15", priority: "P1", blocking: false, category: "test-gap" }), /structural.*expects.*P2\/P3/);
+  assert.match(bad("code-review", { rule: "PY-3", priority: "P3", category: "correctness" }), /hard.*expects.*P0\/P1\/P2/);
+  // Correct pairings produce no tier error.
+  assert.doesNotMatch(bad("code-review", { rule: "PY-9", priority: "P3", blocking: false, category: "style" }), /expects/);
+  assert.equal(bad("code-review", { rule: "PY-3", priority: "P1", category: "correctness" }), "");
+});
+
+test("a missing registry still catches rule citations instead of skipping checks", () => {
+  const missing = { mode: "auto", missing: true, catalog: styleFor(["python"]).catalog, allowed: {} };
+  const err = evaluateGate("code-review", failReport("code-review", [finding({ rule: "PY-3", category: "correctness" })]), { style: missing }).semanticErrors.join("\n");
+  assert.match(err, /registry is missing/);
 });
 
 test("a hard error is routable, a structural architecture block is only a fix, and advisories group by rule", async () => {
@@ -161,7 +180,7 @@ test("an enabled lint drops that rule from the prompt and leaves it when the lin
   const { prepareReview } = await import("../scripts/prepare.mjs");
   const off = diffRepo("app.py", "print(1)\n");
   const absent = await prepareReview(off);
-  assert.match(absent.prompts[0], /### PY-3 ·/);
+  assert.match(absent.prompts[0], /### PY-3 \[hard\] ·/);
 
   const repo = makeRepo();
   const base = commitRel(repo, "app.py", "print(0)\n", "base");
@@ -169,7 +188,7 @@ test("an enabled lint drops that rule from the prompt and leaves it when the lin
   writeRel(repo, "app.py", "print(1)\n");
   gitC(repo, ["commit", "-am", "head"]);
   const present = await prepareReview({ repoDir: repo, mode: "diff", base, head: sha(repo), repro: false, runDir: freshRunDir() });
-  assert.doesNotMatch(present.prompts[0], /### PY-3 ·/);
-  assert.match(present.prompts[0], /### CS-ERR-2 ·/);
+  assert.doesNotMatch(present.prompts[0], /### PY-3 \[hard\] ·/);
+  assert.match(present.prompts[0], /### CS-ERR-2 \[hard\] ·/);
   assert.ok(present.result.scope.codingStyle.suppressed.some((rule) => rule.id === "PY-3"));
 });

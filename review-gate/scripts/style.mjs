@@ -80,11 +80,12 @@ export function routeFiles(fileContents, registry) {
 
 function ruffOn(text, code) {
   if (text == null) return false;
-  const ignored = new Set();
-  for (const match of text.matchAll(/ignore\s*=\s*\[([^\]]*)\]/g)) {
-    for (const tok of match[1].matchAll(/["']([A-Za-z0-9]+)["']/g)) ignored.add(tok[1]);
+  const ignored = [];
+  for (const match of text.matchAll(/(?:extend-)?ignore\s*=\s*\[([^\]]*)\]/g)) {
+    for (const tok of match[1].matchAll(/["']([A-Za-z0-9]+)["']/g)) ignored.push(tok[1]);
   }
-  if (ignored.has(code)) return false;
+  // Ruff prefixes: ignore = ["E"] suppresses every E* rule, same as select.
+  if (ignored.some((token) => code === token || code.startsWith(token))) return false;
   if (/["']ALL["']/.test(text)) return true;
   const selected = [];
   for (const match of text.matchAll(/(?:^|\n)\s*(?:extend-)?select\s*=\s*\[([^\]]*)\]/g)) {
@@ -174,7 +175,10 @@ function lintCovers(rule, languages, lints) {
 
 function styleSection(languages, generated, rules, note) {
   if (!rules.length) return "";
-  const body = rules.map((rule) => `### ${rule.id} · ${rule.title}\n${rule.text}`).join("\n\n");
+  // The per-rule tier in the heading closes the registry -> prompt -> schema
+  // chain: the reviewer sees PY-3 is hard and PY-9 is advisory, and the schema
+  // then rejects a finding whose blocking/priority contradicts that tier.
+  const body = rules.map((rule) => `### ${rule.id} [${rule.tier}] · ${rule.title}\n${rule.text}`).join("\n\n");
   return [
     "## Coding style reference (this gate's rules)",
     `Languages in scope: ${languages.length ? languages.join(", ") : "(common only)"}. Generated files exempt from these rules: ${generated.length ? generated.join(", ") : "(none)"}.`,
@@ -206,14 +210,32 @@ function emptyStyle(mode, missing) {
   };
 }
 
+function catalogOf(registry, missing) {
+  return (registry?.rules || []).map((rule) => ({
+    id: rule.id,
+    tier: rule.tier,
+    gate: rule.gate,
+    categories: rule.categories || [],
+  }));
+}
+
 export function loadCodingStyle({ skillsRoot, repo, fileContents, selection }) {
   if (selection.mode === "off") return emptyStyle("off", false);
   const rulesPath = join(skillsRoot, "coding-style", "rules.json");
-  if (!existsSync(rulesPath)) {
-    if (styleIsRequired(selection)) throw new Error("review-gate: coding-style/rules.json is missing");
-    return emptyStyle("auto", true);
+  let registry = null;
+  if (existsSync(rulesPath)) {
+    try {
+      registry = JSON.parse(readFileSync(rulesPath, "utf8"));
+    } catch (err) {
+      throw new Error(`review-gate: coding-style/rules.json is not valid JSON: ${err.message}`);
+    }
   }
-  const registry = JSON.parse(readFileSync(rulesPath, "utf8"));
+  if (registry === null) {
+    if (styleIsRequired(selection)) throw new Error("review-gate: coding-style/rules.json is missing");
+    // Missing registry still carries the empty catalog so a finding that cites
+    // a rule is flagged instead of slipping past every check.
+    return { ...emptyStyle("auto", true), catalog: catalogOf(registry, true) };
+  }
   const routed = routeFiles(fileContents, registry);
   const languages = selection.languages ? LANGUAGES.filter((lang) => selection.languages.includes(lang)) : routed.found;
   const includeTsOnly = selection.mode === "explicit" ? languages.includes("typescript") : routed.sawTypeScript;
@@ -242,12 +264,7 @@ export function loadCodingStyle({ skillsRoot, repo, fileContents, selection }) {
     sections[gate] = styleSection(languages, routed.generated, slice, note);
     allowed[gate] = slice.map((rule) => rule.id);
   }
-  const catalog = (registry.rules || []).map((rule) => ({
-    id: rule.id,
-    tier: rule.tier,
-    gate: rule.gate,
-    categories: rule.categories || [],
-  }));
+  const catalog = catalogOf(registry, false);
   const tiers = Object.fromEntries(catalog.map((rule) => [rule.id, rule.tier]));
   const rels = ["coding-style/rules.json"];
   for (const gate of GATE_NAMES) {

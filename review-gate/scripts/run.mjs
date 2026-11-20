@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isDirectRun } from "./companions.mjs";
 import { generateWorkflowAdapter } from "./core.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -14,12 +15,7 @@ export function missingRunnerMessage(runner) {
   return `review-gate: optional workflow-run runner was not found at ${runner}. Use scripts/prepare.mjs, dispatch three read-only sub-agents on this host's own model, then scripts/finalize.mjs. Do not default to the claude or codex CLI.`;
 }
 
-function isDirectRun() {
-  const entry = process.argv[1];
-  return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
-}
-
-if (isDirectRun()) {
+if (isDirectRun(import.meta.url)) {
   const forwarded = process.argv.slice(2);
   const printIndex = forwarded.indexOf("--print-workflow");
   const printWorkflow = printIndex !== -1;

@@ -2,8 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { defaultSkillsRoot, freezeKit, loadCompanionSet, packageDir } from "./companions.mjs";
+import { defaultSkillsRoot, freezeKit, isDirectRun, loadCompanionSet, packageDir } from "./companions.mjs";
 import { reviewerPrompt } from "./prompt.mjs";
 import { loadCodingStyle, parseCodingStyle, styleIsRequired } from "./style.mjs";
 import { renderHandoff } from "./handoff.mjs";
@@ -294,11 +293,6 @@ export async function prepareReview(rawArgs, runtime = {}) {
   }
 }
 
-function isDirectRun() {
-  const entry = process.argv[1];
-  return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
-}
-
 async function main(argv) {
   if (argv.includes("--check")) {
     const found = checkCompanions();
@@ -311,7 +305,7 @@ async function main(argv) {
   process.stdout.write(`${state.runDir}\n`);
 }
 
-if (isDirectRun()) {
+if (isDirectRun(import.meta.url)) {
   main(process.argv.slice(2)).catch((err) => {
     console.error(err.message);
     process.exit(1);

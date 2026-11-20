@@ -21,7 +21,8 @@ Workflow 脚本（`export const meta` + `agent()/parallel()/pipeline()/phase()/l
 
 ```
 node <本 skill 目录>/scripts/run.mjs <workflow.js> \
-  [--args '<json>'] [--backend claude|codex|kimi|grok] [--model <m>] \
+  --backend claude|codex|kimi|grok \
+  [--args '<json>'] [--model <m>] \
   [--route '<label-glob>=<backend>[:<model>]']... \
   [--concurrency N] [--timeout SECONDS] [--cwd DIR] [--effort E] \
   [--status-file PATH] [--task-id ID]
@@ -33,7 +34,8 @@ node <本 skill 目录>/scripts/run.mjs <workflow.js> \
   - `1`：用法错误，或 workflow 脚本自己抛错
   - `2`：至少一次 agent CLI 执行失败（未登录、缺二进制、超时、进程非 0、schema 耗尽等）。脚本仍可能合成 `{overall:'FAIL', reviews:[]}`——那是脚本在过滤 `null`，不是审查结论
 - `--backend` / `--model` / `--route` / 脚本 `opts.backend`+`opts.model`：显式绑定。**模型名是各家自己的命名空间**，runner 不会把一家的模型名传给另一家，也不会因为当前宿主是另一家 CLI 就改派。选定 grok 就跑 grok；不要为了「我在 codex 里」而改掉脚本或路由已经指定的后端。
-- 解析优先级：脚本 `opts.backend`（配 `opts.model`）→ 首个匹配的 `--route`（用该 route 的模型）→ 默认 backend。显式后端不受支持时记 `BACKEND_UNAVAILABLE`，不回退。在默认 Claude 下 `opts.model` 优先于 `--model`；其他默认 backend 使用 `--model`，不会解释脚本里的 Claude 模型别名。需要固定某次调用的模型时，给完整 `opts.backend` + `opts.model`，并核对 sidecar 的解析结果，不把孤立的 `model:'opus'` 当成跨后端约束。
+- **backend 没有默认值**：`--backend` 或 `WORKFLOW_RUN_BACKEND` 必须显式给一个；没有就 exit 1，不会静默落到某家 CLI——是否用宿主自己的模型跑 workflow 是调用者的决定，不是 runner 的默认。
+- 解析优先级：脚本 `opts.backend`（配 `opts.model`）→ 首个匹配的 `--route`（用该 route 的模型）→ 显式 backend（`--backend`/`WORKFLOW_RUN_BACKEND`）。显式后端不受支持时记 `BACKEND_UNAVAILABLE`，不回退。默认 backend 为 claude 时脚本侧 `opts.model` 优先于 `--model`；其他 backend 使用 `--model`，不会解释脚本里的 Claude 模型别名。需要固定某次调用的模型时，给完整 `opts.backend` + `opts.model`，并核对 sidecar 的解析结果，不把孤立的 `model:'opus'` 当成跨后端约束。
 - `--cwd`：**agent 会话工作目录**。它可以和 workflow `--args` 里的 `repoDir` 不同，也和 source review 冻结的 `base`/`head` 不同——审查范围由脚本参数决定，会话 cwd 只影响 CLI 在哪棵树上读文件、跑命令。
 - `--timeout`：单个 agent 的墙钟上限（秒，默认 1200），runner 自己 SIGTERM/SIGKILL，四家 CLI 都没有内建超时。
 - `--effort`：有推理档位的后端（目前 grok 的 `--reasoning-effort`）的默认档；脚本里 `opts.effort` 优先。没有该 flag 的后端会忽略，而不是报错。

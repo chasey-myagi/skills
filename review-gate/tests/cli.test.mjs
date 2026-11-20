@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -173,9 +174,45 @@ test("CLI backend authentication failure produces blocked sidecar and incomplete
   assert.equal(result.passed, false);
 });
 for (const args of [["--args", "{broken"], ["--unknown-flag"]]) {
-  test(`CLI rejects invalid input ${args[0]} without a backend`, async () => {
-    const r = await runCli(args);
+  test(`CLI rejects invalid input ${args[0]}`, async () => {
+    const r = await runCli(["--backend", "claude", ...args]);
     assert.equal(r.code, 1);
     assert.match(r.stderr, args[0] === "--args" ? /not valid JSON/ : /unexpected argument/);
   });
 }
+
+test("CLI refuses to dispatch without an explicit backend", async () => {
+  const r = await runCli(["--args", '{"repoDir":"/tmp","mode":"snapshot","paths":["x"]}']);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no backend selected/);
+  assert.match(r.stderr, /no silent default/);
+});
+
+test("symlinked entry points still run their main block", async () => {
+  // The installed layout is often ~/.skills/<name> -> real dir: invoking the
+  // symlink must behave like the real file, not exit 0 doing nothing.
+  const dir = mkdtempSync(join(tmpdir(), "rgate-links-"));
+  const runLink = join(dir, "run.mjs");
+  const prepareLink = join(dir, "prepare.mjs");
+  symlinkSync(CLI, runLink);
+  symlinkSync(join(ROOT, "..", "scripts", "prepare.mjs"), prepareLink);
+  const printed = await runCli(["--print-workflow"], { binDir: null });
+  const viaLink = await new Promise((resolve) => {
+    const child = spawn(NODE, [runLink, "--print-workflow"], { env: process.env });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+  assert.equal(viaLink.code, 0, viaLink.stderr);
+  assert.equal(viaLink.stdout, printed.stdout);
+  const check = await new Promise((resolve) => {
+    const child = spawn(NODE, [prepareLink, "--check"], { env: process.env });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+  assert.equal(check.code, 0, check.stderr);
+  assert.match(check.stdout, /companions ok/);
+});

@@ -7,6 +7,19 @@ export function packageDir(moduleUrl = import.meta.url) {
   return realpathSync(resolve(dirname(fileURLToPath(moduleUrl)), ".."));
 }
 
+// True only when argv[1] resolves to this module's real file — a symlinked
+// entry point (e.g. ~/.agents/skills/.../run.mjs) must still run main(), and
+// Node keeps the specifier path in import.meta.url, so realpath BOTH sides.
+export function isDirectRun(moduleUrl) {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
 // Sibling skills sit next to the real review-gate directory. A symlink such as
 // ~/.claude/skills/review-gate -> ../../.agents/skills/review-gate resolves to
 // that real parent, not to the directory that holds the link.

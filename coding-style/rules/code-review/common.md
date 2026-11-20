@@ -48,7 +48,7 @@ Do not delete behavior, weaken a type, or drop a check so the type checker or li
 
 ### CS-LOG-2 · Logs carry ids, not payloads
 
-Logs and error text do not include user input, model output, request bodies, or credentials. Record a type, a count, or an id. A credential or secret in a log is a security finding.
+Logs and error text record a type, a count, or an id — not user input, model output, or request bodies. Oversized payloads in logs are a readability and cost problem.
 
 ### CS-ERR-5 · Errors say what failed
 
@@ -57,3 +57,7 @@ An error message says what failed and includes the value or type a reader needs 
 ### CS-SEC-1 · Permission checks stay visible
 
 A permission check sits in the route or handler a reader can see. Do not hide it in config or another file. This is a placement hint, not a claim that the check is missing.
+
+### CS-SEC-2 · No credentials or secrets in logs or errors
+
+A credential, token, key, or secret must never appear in a log line, error message, or exception payload — not even partially or "temporarily". Redact at the source, never downstream. A secret in a log is a blocking security finding.

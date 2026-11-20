@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isDirectRun } from "./companions.mjs";
 import { persist } from "./prepare.mjs";
 import { reproPrompt } from "./prompt.mjs";
 import { GATE_NAMES, REPRO_SCHEMA, aggregateCallouts, aggregateFindings, evaluateGate, sha256 } from "./schema.mjs";
@@ -38,9 +38,46 @@ export function capturedFromState(saved) {
   };
 }
 
+// A repeat finalize must rebuild from the immutable prepared baseline, not
+// accumulate the previous run's diagnostics — otherwise a second finalize can
+// stay INCONCLUSIVE on gate failures the resubmitted reports already fixed.
+function resetDerived(result) {
+  result.reviews = [];
+  result.findings = [];
+  result.humanCallouts = [];
+  result.pendingHumanDecisions = [];
+  result.unrunChecks = [];
+  result.fixQueue = [];
+  result.gateBlockingReasons = [];
+  result.passCount = 0;
+  result.executionStatus = "incomplete";
+  result.overall = "INVALID";
+  result.passed = false;
+  result.diagnostics = {
+    missingGates: [],
+    identityFailures: [],
+    semanticFailures: [],
+    agentFailures: [],
+    schemaFailures: [],
+  };
+  result.verification = {
+    enabled: false,
+    ran: false,
+    skipped: false,
+    skipReason: null,
+    parentReproPath: null,
+    findings: [],
+    worktrees: [],
+  };
+  result.drift = { detected: false, details: null };
+  delete result.error;
+  if (result.artifacts) result.artifacts.reproWorktrees = [];
+}
+
 export function loadPreparedState(runDir) {
   const saved = JSON.parse(readFileSync(join(runDir, "meta", "prepare-state.json"), "utf8"));
   const result = JSON.parse(readFileSync(join(runDir, "review-result.json"), "utf8"));
+  resetDerived(result);
   return {
     args: saved.args,
     repo: saved.repo,
@@ -188,6 +225,16 @@ export async function finalizeReview(state, reviews, runtime = {}) {
   }
 
   const drift = detectDrift({ ...args, repoDir: repo }, repo, captured, snapshotDir);
+  // Re-verify the frozen rubric kit too: it is what reviewers read, so a kit
+  // edit after prepare is drift even when the reviewed sources did not move.
+  const kitRoot = join(runDir, "meta", "kit");
+  for (const file of result.scope?.kit?.files || []) {
+    const abs = join(kitRoot, file.path);
+    if (!existsSync(abs) || sha256(readFileSync(abs)) !== file.hash) {
+      drift.detected = true;
+      drift.details = [drift.details, `kit file changed: ${file.path}`].filter(Boolean).join("; ");
+    }
+  }
   if (!existsSync(diffPath) || sha256(readFileSync(diffPath)) !== diffHash) {
     drift.detected = true;
     drift.details = [drift.details, "diff artifact changed"].filter(Boolean).join("; ");
@@ -232,11 +279,6 @@ export async function finalizeRun(runDir, runtime = {}) {
   return finalizeReview(state, reviews, runtime);
 }
 
-function isDirectRun() {
-  const entry = process.argv[1];
-  return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
-}
-
 async function main(argv) {
   const index = argv.indexOf("--run-dir");
   if (index < 0 || !argv[index + 1]) throw new Error("review-gate: finalize requires --run-dir <runDir>");
@@ -244,7 +286,7 @@ async function main(argv) {
   process.stdout.write(`${result.overall}\n`);
 }
 
-if (isDirectRun()) {
+if (isDirectRun(import.meta.url)) {
   main(process.argv.slice(2)).catch((err) => {
     console.error(err.message);
     process.exit(1);

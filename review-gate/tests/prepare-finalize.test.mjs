@@ -78,6 +78,39 @@ test("prepare prompts match reviewerPrompt and the prompts runReviewGate dispatc
   }
 });
 
+test("a repeat finalize rebuilds from the prepared baseline, not prior diagnostics", async () => {
+  const args = { ...changed(), runDir: freshRunDir() };
+  const state = await prepareReview(args);
+  mkdirSync(join(state.runDir, "reports"));
+  // First finalize: all reports missing.
+  const first = await finalizeRun(state.runDir);
+  assert.equal(first.overall, "INVALID");
+  assert.deepEqual(first.diagnostics.missingGates.sort(), [...GATE_NAMES].sort());
+  // Resubmit all reports; the second finalize must not keep the old missing list.
+  for (const gate of GATE_NAMES) {
+    writeFileSync(join(state.runDir, "reports", `${gate}.json`), JSON.stringify(gateReport(gate)));
+  }
+  const second = await finalizeRun(state.runDir);
+  assert.equal(second.diagnostics.missingGates.length, 0);
+  assert.equal(second.overall, "PASS");
+  assert.equal(second.passed, true);
+});
+
+test("finalize marks tampered frozen kit files as drift", async () => {
+  const args = { ...changed(), runDir: freshRunDir() };
+  const state = await prepareReview(args);
+  mkdirSync(join(state.runDir, "reports"));
+  for (const gate of GATE_NAMES) {
+    writeFileSync(join(state.runDir, "reports", `${gate}.json`), JSON.stringify(gateReport(gate)));
+  }
+  const kitFile = state.result.scope.kit.files[0].path;
+  writeFileSync(join(state.runDir, "meta", "kit", kitFile), "tampered rubric\n");
+  const result = await finalizeRun(state.runDir);
+  assert.equal(result.drift.detected, true);
+  assert.match(result.drift.details, new RegExp(`kit file changed: ${kitFile.replace(/[/.]/g, "\\$&")}`));
+  assert.equal(result.overall, "INVALID");
+});
+
 test("finalize treats a missing report, a wrong gate and source drift as INVALID", async () => {
   const args = { ...changed(), runDir: freshRunDir() };
   const state = await prepareReview(args);

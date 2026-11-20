@@ -328,12 +328,19 @@ export function normalizeFinding(raw) {
   };
 }
 
+// Registry-declared tier -> allowed finding priorities (coding-style/rules.json "tiers").
+const TIER_PRIORITIES = {
+  hard: new Set(["P0", "P1", "P2"]),
+  structural: new Set(["P2", "P3"]),
+  advisory: new Set(["P3"]),
+};
+
 function styleIssues(assigned, findings, style) {
   const errors = [];
   for (const finding of findings) {
     if (finding.category === "style" && finding.blocking) errors.push(`finding ${finding.id} category style cannot block`);
     if (!finding.rule) continue;
-    if (!style || style.missing) continue;
+    if (!style) continue;
     if (style.mode === "off") {
       errors.push(`finding ${finding.id} cites ${finding.rule} while coding style is off`);
       continue;
@@ -347,12 +354,20 @@ function styleIssues(assigned, findings, style) {
       errors.push(`finding ${finding.id} rule ${finding.rule} belongs to ${rule.gate}`);
       continue;
     }
+    if (style.missing) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} cannot be checked: coding-style registry is missing`);
+      continue;
+    }
     if (!(style.allowed?.[assigned] || []).includes(finding.rule)) {
       errors.push(`finding ${finding.id} rule ${finding.rule} is not loaded for this run`);
       continue;
     }
     if (rule.tier === "advisory" && finding.blocking) {
       errors.push(`finding ${finding.id} rule ${finding.rule} is advisory and cannot block`);
+    }
+    const tierPriorities = TIER_PRIORITIES[rule.tier];
+    if (tierPriorities && !tierPriorities.has(finding.priority)) {
+      errors.push(`finding ${finding.id} rule ${finding.rule} is ${rule.tier} (expects ${[...tierPriorities].join("/")}) but is ${finding.priority}`);
     }
     if (rule.tier === "hard" && Array.isArray(rule.categories) && rule.categories.length && !rule.categories.includes(finding.category)) {
       errors.push(`finding ${finding.id} rule ${finding.rule} does not allow category ${finding.category}`);

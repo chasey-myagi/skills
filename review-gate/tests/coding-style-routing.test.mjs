@@ -34,19 +34,19 @@ test("a mixed diff loads four language packs and a go-only diff does not", async
     "app.rs": "fn main() {}\n",
   }));
   const code = mixed.prompts[0];
-  assert.match(code, /### PY-3 ·/);
-  assert.match(code, /### TS-1 ·/);
-  assert.match(code, /### GO-1 ·/);
-  assert.match(code, /### RS-1 ·/);
-  assert.match(code, /### CS-ERR-1 ·/);
+  assert.match(code, /### PY-3 \[hard\] ·/);
+  assert.match(code, /### TS-1 \[structural\] ·/);
+  assert.match(code, /### GO-1 \[hard\] ·/);
+  assert.match(code, /### RS-1 \[hard\] ·/);
+  assert.match(code, /### CS-ERR-1 \[hard\] ·/);
   assert.equal(mixed.result.scope.codingStyle.languages.join(","), "python,typescript,go,rust");
 
   const goOnly = await promptsFor(diffRepo({ "app.go": "package app\n" }));
-  assert.match(goOnly.prompts[0], /### GO-1 ·/);
-  assert.match(goOnly.prompts[0], /### CS-ERR-1 ·/);
-  assert.doesNotMatch(goOnly.prompts[0], /### PY-3 ·/);
-  assert.doesNotMatch(goOnly.prompts[0], /### TS-2 ·/);
-  assert.doesNotMatch(goOnly.prompts[0], /### RS-1 ·/);
+  assert.match(goOnly.prompts[0], /### GO-1 \[hard\] ·/);
+  assert.match(goOnly.prompts[0], /### CS-ERR-1 \[hard\] ·/);
+  assert.doesNotMatch(goOnly.prompts[0], /### PY-3 \[hard\] ·/);
+  assert.doesNotMatch(goOnly.prompts[0], /### TS-2 \[structural\] ·/);
+  assert.doesNotMatch(goOnly.prompts[0], /### RS-1 \[hard\] ·/);
   assert.deepEqual(goOnly.result.scope.codingStyle.languages, ["go"]);
 });
 
@@ -57,8 +57,8 @@ test("deleting a rust file does not load the rust pack", async () => {
   gitC(repo, ["rm", "lib.rs"]);
   gitC(repo, ["commit", "-m", "delete"]);
   const state = await promptsFor({ repoDir: repo, mode: "diff", base, head: sha(repo), repro: false });
-  assert.doesNotMatch(state.prompts[0], /### RS-1 ·/);
-  assert.match(state.prompts[2], /### CS-ABS-1 ·/);
+  assert.doesNotMatch(state.prompts[0], /### RS-1 \[hard\] ·/);
+  assert.match(state.prompts[2], /### CS-ABS-1 \[structural\] ·/);
   assert.deepEqual(state.result.scope.codingStyle.languages, []);
 });
 
@@ -67,14 +67,14 @@ test("shebangs route extensionless scripts and an unknown extension stays on com
     "bin/pytool": "#!/usr/bin/env python3\nprint(1)\n",
     "bin/jstool": "#!/usr/bin/env node\nconsole.log(1)\n",
   }));
-  assert.match(scripts.prompts[0], /### PY-3 ·/);
-  assert.match(scripts.prompts[0], /### TS-2 ·/);
-  assert.doesNotMatch(scripts.prompts[0], /### TS-1 ·/);
+  assert.match(scripts.prompts[0], /### PY-3 \[hard\] ·/);
+  assert.match(scripts.prompts[0], /### TS-2 \[structural\] ·/);
+  assert.doesNotMatch(scripts.prompts[0], /### TS-1 \[structural\] ·/);
   assert.match(scripts.prompts[0], /TypeScript-only rules are omitted/);
 
   const notes = await promptsFor(diffRepo({ "notes.md": "hello\n" }));
-  assert.match(notes.prompts[0], /### CS-ERR-1 ·/);
-  assert.doesNotMatch(notes.prompts[0], /### PY-3 ·|### TS-2 ·|### GO-1 ·|### RS-1 ·/);
+  assert.match(notes.prompts[0], /### CS-ERR-1 \[hard\] ·/);
+  assert.doesNotMatch(notes.prompts[0], /### PY-3 \[hard\] ·|### TS-2 \[structural\] ·|### GO-1 \[hard\] ·|### RS-1 \[hard\] ·/);
   assert.deepEqual(notes.result.scope.codingStyle.languages, []);
 });
 
@@ -88,7 +88,7 @@ test("generated Go files are exempt and still named in the prompt", async () => 
   assert.ok(generated.includes("hand/gen.go"));
   assert.match(state.prompts[0], /api\/demo\.pb\.go/);
   assert.match(state.prompts[0], /hand\/gen\.go/);
-  assert.match(state.prompts[0], /### GO-1 ·/);
+  assert.match(state.prompts[0], /### GO-1 \[hard\] ·/);
 });
 
 test("codingStyle off omits the section and records mode off outside the source manifest", async () => {
@@ -102,10 +102,10 @@ test("codingStyle off omits the section and records mode off outside the source 
 
 test("an explicit rust list on a TypeScript diff loads rust and not TypeScript", async () => {
   const state = await promptsFor({ ...diffRepo({ "app.ts": "export const n = 1;\n" }), codingStyle: ["rust"] });
-  assert.match(state.prompts[0], /### RS-1 ·/);
-  assert.match(state.prompts[0], /### CS-ERR-1 ·/);
-  assert.doesNotMatch(state.prompts[0], /### TS-1 ·/);
-  assert.doesNotMatch(state.prompts[0], /### TS-2 ·/);
+  assert.match(state.prompts[0], /### RS-1 \[hard\] ·/);
+  assert.match(state.prompts[0], /### CS-ERR-1 \[hard\] ·/);
+  assert.doesNotMatch(state.prompts[0], /### TS-1 \[structural\] ·/);
+  assert.doesNotMatch(state.prompts[0], /### TS-2 \[structural\] ·/);
   assert.deepEqual(state.result.scope.codingStyle.languages, ["rust"]);
 });
 
@@ -177,15 +177,28 @@ test("four language packs stay inside 256 KiB and a huge context still fails fir
 
 test("brief keeps strong and some evidence and drops a single-source rule", async () => {
   const state = await promptsFor({ ...diffRepo({ "app.py": "print(1)\n" }), codingStyle: "brief" });
-  assert.match(state.prompts[2], /### CS-ABS-1 ·/);
-  assert.doesNotMatch(state.prompts[2], /### CS-CMT-3 ·/);
-  assert.doesNotMatch(state.prompts[2], /### PY-16 ·/);
+  assert.match(state.prompts[2], /### CS-ABS-1 \[structural\] ·/);
+  assert.doesNotMatch(state.prompts[2], /### CS-CMT-3 \[advisory\] ·/);
+  assert.doesNotMatch(state.prompts[2], /### PY-16 \[advisory\] ·/);
   assert.equal(state.result.scope.codingStyle.profile, "brief");
+});
+
+test("a ruff ignore prefix suppresses a rule even under select ALL", async () => {
+  const repo = makeRepo();
+  const base = commitRel(repo, "app.py", "print(0)\n", "base");
+  writeRel(repo, "pyproject.toml", "[tool.ruff]\nselect = [\"ALL\"]\nignore = [\"E\"]\n");
+  writeRel(repo, "app.py", "print(1)\n");
+  gitC(repo, ["add", "-A"]);
+  gitC(repo, ["commit", "-m", "head"]);
+  const state = await prepareReview({ repoDir: repo, mode: "diff", base, head: sha(repo), repro: false, runDir: freshRunDir() });
+  // ruff:E722 (PY-3 / CS-ERR-1) is ignored via the E* prefix, so the rules stay.
+  assert.match(state.prompts[0], /### PY-3 \[hard\] ·/);
+  assert.match(state.prompts[0], /### CS-ERR-1 \[hard\] ·/);
 });
 
 test("an enabled ruff selection drops the covered rule and the handoff names it", async () => {
   const bare = await promptsFor(diffRepo({ "app.py": "print(1)\n" }));
-  assert.match(bare.prompts[0], /### PY-3 ·/);
+  assert.match(bare.prompts[0], /### PY-3 \[hard\] ·/);
 
   const repo = makeRepo();
   const base = commitRel(repo, "app.py", "print(0)\n", "base");
@@ -194,8 +207,8 @@ test("an enabled ruff selection drops the covered rule and the handoff names it"
   gitC(repo, ["add", "-A"]);
   gitC(repo, ["commit", "-m", "head"]);
   const result = await runReviewGate({ repoDir: repo, mode: "diff", base, head: sha(repo), repro: false }, rt(async (prompt, opts) => {
-    if (opts.label === "code-review") assert.doesNotMatch(prompt, /### PY-3 ·/);
-    assert.match(prompt, /### CS-ERR-2 ·|### CS-ABS-1 ·|### CS-TEST-1 ·/);
+    if (opts.label === "code-review") assert.doesNotMatch(prompt, /### PY-3 \[hard\] ·/);
+    assert.match(prompt, /### CS-ERR-2 \[hard\] ·|### CS-ABS-1 \[structural\] ·|### CS-TEST-1 \[hard\] ·/);
     return gateReport(opts.label);
   }));
   const handoff = readFileSync(join(result.artifacts.runDir, "handoff.md"), "utf8");
