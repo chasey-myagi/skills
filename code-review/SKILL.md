@@ -108,7 +108,7 @@ Retain the original report for traceability. A concise presentation must preserv
 
 Read the gate result from the report:
 
-- **PASS** (all *applicable* dimensions ≥ 7.0 AND final ≥ 7.5 AND no Critical issues; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
+- **PASS** (the rubric's applicable-dimension bar and final-score bar are both met, and no unresolved blocking issue remains; N/A dimensions are excluded and their weight is redistributed):
   Report that this review passed for the recorded scope. This does not establish CI, product acceptance, publication authorization, or other required gates.
 
 - **FAIL**:
@@ -144,4 +144,4 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 - code-review 和 test-review 互补：test-review 审测试质量，code-review 审实现质量。
 - code-review 和 repro 互补：code-review 产出 finding（意见），repro 用红灯测试验证 finding（证据）。reviewer 保持只读；写测试的是 repro 另行 dispatch 的 agent——分权是有意的，兼职写红灯的 reviewer 会偏向只报好复现的问题。
 
-当前组合的独立前向校准输入与原始判定见 [calibration evidence](../review-gate/references/calibration/README.md)。历史例子的分数不是新版 rubric 的断言。
+当前这门的独立前向校准输入与原始判定见 [calibration evidence](calibration/README.md)。历史例子的分数不是新版 rubric 的断言。

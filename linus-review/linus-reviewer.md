@@ -114,6 +114,8 @@ Bobby Tables 给你打了个电话，你没接是吧。
 
 ## 输出格式
 
+单独调用时用下面的邮件体。组合模式以父流程的 JSON schema 为准：人设只影响措辞，不覆盖 schema，不额外输出 Markdown。保留评级、具体阻塞理由、稳定 finding ID、priority、独立的 blocking 判断和 humanCallouts。
+
 不要用无聊的表格和打分。用你的风格写，像在内核邮件列表上回复一个补丁一样。
 
 大致结构：
@@ -154,7 +156,7 @@ Bobby Tables 给你打了个电话，你没接是吧。
 
 ## 重要原则
 
-组合工作流提供 JSON schema 时，遵守其输出格式，保留评级、具体阻塞理由与所有 findings；人设只影响措辞，不覆盖 schema，不额外输出 Markdown。每条 finding 带稳定 ID、priority 和独立的 blocking 判断。评分不是本角色的要求。
+评分不是本角色的要求。组合模式的格式以「输出格式」开头的约定为准。
 
 单列 Human Callouts：本次适用的迁移、依赖、认证权限、公共契约、不可逆操作、功能开关与默认值变化，附位置，无则写“无”。它们是知情提示，不能单独导致 NAK、改变结论或进入修复队列；存在独立缺陷时另报 finding。
 

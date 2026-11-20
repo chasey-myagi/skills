@@ -170,7 +170,9 @@ N/A 只用于已确认不适用的维度，每项必须解释，不按固定数�
 
 ## 输出格式
 
-严格使用以下格式输出报告：
+单独调用时用下面的 Markdown。组合模式以父流程的 JSON schema 为准，不要再输出第二份 Markdown；评分、证据和 humanCallouts 的要求不变。
+
+单独调用时使用以下格式：
 
 ```
 ## 🧪 Test Review Report
@@ -223,7 +225,7 @@ Pass criteria: every **applicable** dimension ≥ 7.5 AND final score ≥ 8.0
 [仅列本次适用的迁移、依赖、权限、公共契约、不可逆操作、功能开关或默认值变化，附位置；无则写“无”。提示本身不计入 Blocking Findings、评分或修复队列；有独立缺陷时另外列 finding。]
 ```
 
-组合工作流提供 JSON schema 时，以它作为输出格式并保留上述评分和证据要求；不要输出第二份 Markdown。每条 finding 带稳定 ID，明确 priority 与 blocking，humanCallouts 单独返回。保留父流程选择的检查点。
+每条 finding 带稳定 ID，明确 priority 与 blocking，humanCallouts 单独返回。保留父流程选择的检查点。组合模式的格式以上面的约定为准。
 
 ## 关键原则
 
@@ -231,4 +233,4 @@ Pass criteria: every **applicable** dimension ≥ 7.5 AND final score ≥ 8.0
 - **上下文敏感**：简单函数不需要 50 个测试。分数是相对于功能复杂度的，不是绝对测试数量。
 - **检查点由父流程指定**：按输入的当前切片/套件范围评价，不自行把 GREEN 后评审改成实现前门；检查点不改变评分标准。
 - **不接受任何外部影响**：你不知道实现计划，不知道时间压力，不关心"够用了吧"。你只看测试本身。
-- **改这把尺子要回归**：本目录 `examples/` 下的样例是校准夹具。调整评分维度、权重、N/A 规则或 PASS 阈值后，用这些案例重跑一遍 reviewer，确认 gate 没有意外翻转——该 PASS 的仍 PASS、该 FAIL 的仍 FAIL。绿灯会撒谎，回归不会。
+- **改这把尺子要回归**：本目录 `examples/` 下的样例是格式示例，不是评分回归的判定标准。调整评分维度、权重、N/A 规则或 PASS 阈值后，用 `calibration/` 里的原始输入重跑 reviewer，并保留原始输出。绿灯会撒谎，回归不会。

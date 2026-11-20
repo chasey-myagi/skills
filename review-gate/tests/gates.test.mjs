@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { sha256 } from "../scripts/schema.mjs";
 import {
   makeRepo,
   commitRel,
@@ -54,6 +57,14 @@ test("dispatches exactly the three gates without overriding caller model and wit
   }
   assert.equal(result.total, 3);
   assert.equal(result.passed, true);
+  assert.ok(Array.isArray(result.scope.kit?.files) && result.scope.kit.files.length >= 4);
+  for (const file of result.scope.kit.files) {
+    assert.match(file.hash, /^[0-9a-f]{64}$/);
+    assert.equal(file.hash, sha256(readFileSync(join(result.artifacts.kitDir, file.path))));
+  }
+  const manifest = JSON.parse(readFileSync(result.scope.manifestPath, "utf8"));
+  assert.equal(Object.hasOwn(manifest, "kit"), false);
+  assert.equal(manifest.manifestHash, result.scope.manifestHash);
 });
 
 test("missing gate identity cannot PASS", async () => {

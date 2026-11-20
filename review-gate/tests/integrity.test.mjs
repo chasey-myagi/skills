@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, symlinkSync, unlinkSync, writeFileSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runReviewGate } from '../scripts/core.mjs';
 import { makeRepo, commitRel, writeRel, gitC, sha, freshRunDir, rt, gateReport, failReport, finding } from './helpers.mjs';
 
@@ -110,4 +111,45 @@ test('a non-boolean repro option is rejected before reviewer calls', async () =>
 test('a misspelled scope option cannot silently broaden the review', async () => {
   const { repo } = changed();
   await assert.rejects(runReviewGate({ repoDir: repo, mode: 'working-tree', path: ['app.js'] }, rt()), /unknown args: path/);
+});
+
+function walkMarkdown(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    if (name === 'node_modules' || name === '.git') continue;
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) walkMarkdown(path, out);
+    else if (name.endsWith('.md')) out.push(path);
+  }
+  return out;
+}
+
+test('skill-relative links stay inside the skill, except an optional coding-style sibling', () => {
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const skills = readdirSync(repo).filter((name) => existsSync(join(repo, name, 'SKILL.md')));
+  assert.ok(skills.includes('review-gate') && skills.includes('code-review'));
+  const linkRe = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  const escapes = [];
+  const broken = [];
+  for (const skill of skills) {
+    const skillDir = join(repo, skill);
+    for (const file of walkMarkdown(skillDir)) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(linkRe)) {
+        const href = match[1];
+        if (/^(https?:|mailto:|#)/.test(href)) continue;
+        const bare = href.split('#')[0];
+        if (!bare) continue;
+        const target = resolve(dirname(file), bare);
+        const rel = relative(skillDir, target);
+        if (rel.startsWith('..') || isAbsolute(rel)) {
+          const allowed = rel === '../coding-style' || rel.startsWith(`../coding-style${rel.includes('\\') ? '\\' : '/'}`);
+          if (!allowed) escapes.push(`${relative(repo, file)} -> ${href}`);
+        } else if (!existsSync(target)) {
+          broken.push(`${relative(repo, file)} -> ${href}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(escapes, []);
+  assert.deepEqual(broken, []);
 });

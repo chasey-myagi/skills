@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFi
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { defaultSkillsRoot, freezeKit, loadCompanionSet, packageDir } from "./companions.mjs";
 import {
   GATE_NAMES,
   GATE_SCHEMA,
@@ -32,9 +33,6 @@ import {
 import { renderHandoff } from "./handoff.mjs";
 
 export { GATE_NAMES, GATE_SCHEMA, META, REPRO_SCHEMA };
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = resolve(HERE, "..", "..");
 
 function noop() {}
 
@@ -106,12 +104,6 @@ function createRunDir(requested, repo) {
     return abs;
   }
   return mkdtempSync(join(tmpdir(), "review-gate-"));
-}
-
-function loadRubric(rel) {
-  const p = join(PACKAGE_ROOT, rel);
-  if (!existsSync(p)) throw new Error(`review-gate: missing companion rubric ${rel}`);
-  return readFileSync(p, "utf8");
 }
 
 function persist(runDir, result) {
@@ -261,6 +253,8 @@ export async function runReviewGate(rawArgs, runtime = {}) {
   const repo = realpathSync(resolve(args.repoDir));
   const top = realpathSync(git(repo, ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim());
   if (repo !== top) throw new Error("review-gate: repoDir must be the Git repository root; use paths to select a subdirectory");
+  const skillsRoot = runtime.skillsRoot ? realpathSync(resolve(runtime.skillsRoot)) : defaultSkillsRoot();
+  const companions = loadCompanionSet({ reviewGateDir: packageDir(), skillsRoot });
   const runDir = createRunDir(args.runDir, repo);
   const result = emptyResult();
   result.constraints = args.constraints;
@@ -297,14 +291,18 @@ export async function runReviewGate(rawArgs, runtime = {}) {
     const diffHash = sha256(diff);
     result.artifacts.diffPath = diffPath;
     result.artifacts.diffHash = diffHash;
+    const kit = freezeKit(runDir, companions.files);
+    result.scope.kit = kit;
+    result.artifacts.kitDir = join(runDir, "meta", "kit");
     persist(runDir, result);
 
+    const rubricText = Object.fromEntries(companions.files.map((file) => [file.path, file.text]));
     const rubrics = {
-      "code-review": loadRubric("code-review/code-reviewer.md"),
-      "test-review": loadRubric("test-review/test-reviewer.md"),
-      "linus-review": loadRubric("linus-review/linus-reviewer.md"),
+      "code-review": rubricText["code-review/code-reviewer.md"],
+      "test-review": rubricText["test-review/test-reviewer.md"],
+      "linus-review": rubricText["linus-review/linus-reviewer.md"],
     };
-    const reproRubric = loadRubric("repro/repro-agent.md");
+    const reproRubric = rubricText["repro/repro-agent.md"];
 
     const prompts = GATE_NAMES.map(gate => reviewerPrompt(gate, rubrics[gate], captured, snapshotDir, { ...args, diffPath, diffHash }));
     if (prompts.some(prompt => Buffer.byteLength(prompt) > 256 * 1024)) throw new Error("review prompt exceeds 256 KiB; narrow the scope or reduce supplied context/policy");

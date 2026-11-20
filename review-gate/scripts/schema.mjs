@@ -198,24 +198,25 @@ export function validateSchema(schema, value, path = "$") {
   return errors;
 }
 
+export const DIM_ALIASES = {
+  requirements: "Requirements Fit",
+  "requirements fit": "Requirements Fit",
+  "error handling": "Error Handling",
+  "error path coverage": "Error Path Coverage",
+  "quantity adequacy": "Quantity Adequacy",
+  "scenario coverage": "Scenario Coverage",
+  "boundary exploration": "Boundary Exploration",
+  "state combination": "State Combination",
+  "test quality": "Test Quality",
+};
+
 function dimCanon(name, gate) {
   const key = String(name || "").trim().toLowerCase().replace(/[_-]+/g, " ");
   const table = gate === "test-review" ? TEST_WEIGHTS : CODE_WEIGHTS;
   for (const k of Object.keys(table)) {
     if (k.toLowerCase() === key) return k;
   }
-  const aliases = {
-    requirements: "Requirements Fit",
-    "requirements fit": "Requirements Fit",
-    "error handling": "Error Handling",
-    "error path coverage": "Error Path Coverage",
-    "quantity adequacy": "Quantity Adequacy",
-    "scenario coverage": "Scenario Coverage",
-    "boundary exploration": "Boundary Exploration",
-    "state combination": "State Combination",
-    "test quality": "Test Quality",
-  };
-  return aliases[key] || name;
+  return DIM_ALIASES[key] || name;
 }
 
 function scoreIssues(gate, report) {

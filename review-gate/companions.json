@@ -1,0 +1,8 @@
+{
+  "required": [
+    "code-review/code-reviewer.md",
+    "test-review/test-reviewer.md",
+    "linus-review/linus-reviewer.md",
+    "repro/repro-agent.md"
+  ]
+}

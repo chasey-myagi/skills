@@ -111,7 +111,7 @@ Keep the original report available. Summaries retain every finding ID, blocking 
 
 Read the gate result from the report:
 
-- **PASS** (all *applicable* dimensions ≥ 7.5 AND final ≥ 8.0; N/A dimensions are excluded from the per-dimension bar and their weight is redistributed):
+- **PASS** (the rubric's applicable-dimension bar and final-score bar are both met; N/A dimensions are excluded and their weight is redistributed):
   Report the gate passed for the recorded scope, then continue the parent's authorized workflow at its selected checkpoint.
 
 - **FAIL**:
@@ -124,7 +124,7 @@ With `tdd`, review a completed vertical slice or the suite after RED → GREEN; 
 
 ## 示例
 
-同一个 `slugify` 函数、两份不同充分度的测试套件——这一对就是 reviewer 的校准夹具（真实运行产物）：
+同一个 `slugify` 函数、两份不同充分度的测试套件，是历史报告，用来看格式（真实运行产物）：
 - [不足版（5 测试）→ FAIL 5.32](examples/sample-fail.md) —— 附 8 条具体缺失场景，「状态组合」N/A
 - [充分版（15 测试，补齐 7 条）→ PASS 8.35](examples/sample-pass.md) —— Boundary 压线但达标，reviewer 不放水
 
@@ -145,4 +145,4 @@ dispatch 之前先处理这些边界，别让 reviewer 拿着空输入裸跑：
 - If the user disagrees with a score, they can override the gate. But the default is strict enforcement.
 - The parent workflow chooses the checkpoint; this skill evaluates test quality without redefining the parent's TDD order.
 
-当前组合的独立前向校准输入与原始判定见 [calibration evidence](../review-gate/references/calibration/README.md)。历史例子的分数不是新版 rubric 的断言。
+当前这门的独立前向校准输入与原始判定见 [calibration evidence](calibration/README.md)。历史例子的分数不是新版 rubric 的断言。
